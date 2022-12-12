@@ -13,7 +13,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 /*
-  suppport for serial connected AHRS systems
+  support for serial connected AHRS systems
  */
 
 #pragma once
@@ -48,6 +48,7 @@ public:
         None   = 0,
         VecNav = 1,
         LORD = 2,
+        AnelloEVK = 3, // Skyways
     };
 
     static AP_ExternalAHRS *get_singleton(void) {
@@ -132,7 +133,7 @@ public:
         Vector3f gyro;
         float temperature;
     } ins_data_message_t;
-    
+
 private:
     AP_ExternalAHRS_backend *backend;
 
