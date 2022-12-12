@@ -19,6 +19,7 @@
 #include "AP_ExternalAHRS.h"
 #include "AP_ExternalAHRS_VectorNav.h"
 #include "AP_ExternalAHRS_LORD.h"
+#include "AP_ExternalAHRS_AnelloEVK.h"
 
 #if HAL_EXTERNAL_AHRS_ENABLED
 
@@ -50,7 +51,7 @@ const AP_Param::GroupInfo AP_ExternalAHRS::var_info[] = {
     // @Param: _TYPE
     // @DisplayName: AHRS type
     // @Description: Type of AHRS device
-    // @Values: 0:None,1:VectorNav,2:LORD
+    // @Values: 0:None,1:VectorNav,2:LORD, 3:AnelloEVK
     // @User: Standard
     AP_GROUPINFO_FLAGS("_TYPE", 1, AP_ExternalAHRS, devtype, HAL_EXTERNAL_AHRS_DEFAULT, AP_PARAM_FLAG_ENABLE),
 
@@ -60,7 +61,7 @@ const AP_Param::GroupInfo AP_ExternalAHRS::var_info[] = {
     // @Units: Hz
     // @User: Standard
     AP_GROUPINFO("_RATE", 2, AP_ExternalAHRS, rate, 50),
-    
+
     AP_GROUPEND
 };
 
@@ -81,6 +82,9 @@ void AP_ExternalAHRS::init(void)
         break;
     case DevType::LORD:
         backend = new AP_ExternalAHRS_LORD(this, state);
+        break;
+    case DevType::AnelloEVK:
+        backend = new AP_ExternalAHRS_AnelloEVK(this, state);
         break;
     default:
         GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Unsupported ExternalAHRS type %u", unsigned(devtype));
