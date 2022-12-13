@@ -123,22 +123,23 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
         switch (message_in.state) {
         case ParseState::WaitingFor_Preamble:
             if (b == PREAMBLE) {
+                message_in.packet.preamble = b;
                 message_in.state = ParseState::WaitingFor_PayloadLength;
-                message_in.index = 0; // Just in case
+                message_in.index = 0;
             }
             break;
         case ParseState::WaitingFor_PayloadLength:
-            message_in.packet.length[message_in.index++] = b;
+            message_in.packet.data_length_bytes[message_in.index++] = b;
             if (message_in.index == 2) {
-                message_in.packet.length[2] = message_in.packet.length[0] << 8 | message_in.packet.length[1] ;
-                message_in.index = 0;
+                message_in.packet.data_packet_length = data_packet_length(message_in.packet);
                 message_in.state = ParseState::Reading_Data;
+                message_in.index = 0; // Just in case
             }
             //TODO put in check so we don't get stuck here.
             break;
         case ParseState::Reading_Data:
             message_in.packet.payload[message_in.index++] = b;
-            if (message_in.index >= message_in.packet.length[2]) {
+            if (message_in.index >= message_in.packet.data_packet_length) {
                 message_in.state = ParseState::Checking_CRC;
                 message_in.index = 0;
             }
@@ -157,18 +158,18 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
     }
 }
 
-// returns true if the fletcher checksum for the packet is valid, else false.
+// returns true if the 3 bit CRC indicates valid packet.
 bool AP_ExternalAHRS_AnelloEVK::valid_packet(const AnelloEVK_Packet & packet) const
 {
     uint8_t checksum_one = 0;
     uint8_t checksum_two = 0;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         checksum_one += packet.CRC[i];
         checksum_two += checksum_one;
     }
 
-    for (int i = 0; i < packet.length[2]; i++) {
+    for (int i = 0; i < packet.data_packet_length; i++) {
         checksum_one += packet.payload[i];
         checksum_two += checksum_one;
     }
@@ -179,7 +180,7 @@ bool AP_ExternalAHRS_AnelloEVK::valid_packet(const AnelloEVK_Packet & packet) co
 // Calls the correct functions based on the packet descriptor of the packet
 void AP_ExternalAHRS_AnelloEVK::handle_packet(const AnelloEVK_Packet& packet)
 {
-    switch ((DescriptorSet) packet.length[2]) {
+    switch ((DescriptorSet) packet.data_packet_length) {
     case DescriptorSet::IMUData:
         handle_imu(packet);
         post_imu();
@@ -204,7 +205,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(const AnelloEVK_Packet& packet)
     last_ins_pkt = AP_HAL::millis();
 
     // Iterate through fields of varying lengths in INS packet
-    for (uint8_t i = 0; i < packet.length[2]; i +=  packet.payload[i]) {
+    for (uint8_t i = 0; i < packet.data_packet_length; i +=  packet.payload[i]) {
         switch ((INSPacketField) packet.payload[i+1]) {
         // Scaled Ambient Pressure
         case INSPacketField::PRESSURE: {
@@ -280,7 +281,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(const AnelloEVK_Packet &packet)
     last_gps_pkt = AP_HAL::millis();
 
     // Iterate through fields of varying lengths in GNSS packet
-    for (uint8_t i = 0; i < packet.length[2]; i += packet.payload[i]) {
+    for (uint8_t i = 0; i < packet.data_packet_length; i += packet.payload[i]) {
         switch ((GNSSPacketField) packet.payload[i+1]) {
         // GPS Time
         case GNSSPacketField::GPS_TIME: {
@@ -346,7 +347,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_filter(const AnelloEVK_Packet &packet)
     last_filter_pkt = AP_HAL::millis();
 
     // Iterate through fields of varying lengths in filter packet
-    for (uint8_t i = 0; i < packet.length[2]; i += packet.payload[i]) {
+    for (uint8_t i = 0; i < packet.data_packet_length; i += packet.payload[i]) {
         switch ((FilterPacketField) packet.payload[i+1]) {
         // GPS Timestamp
         case FilterPacketField::GPS_TIME: {
@@ -566,6 +567,11 @@ double AP_ExternalAHRS_AnelloEVK::extract_double(const uint8_t *data, uint8_t of
 
     return *reinterpret_cast<double*>(&tmp);
 }
+
+uint8_t AP_ExternalAHRS_AnelloEVK::data_packet_length(const AnelloEVK_Packet &packet) const {
+    return packet.data_length_bytes[0] << 8 | packet.data_length_bytes[1] ;
+}
+
 
 #endif // HAL_EXTERNAL_AHRS_ENABLED
 

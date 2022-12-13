@@ -74,15 +74,20 @@ private:
      * https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#binary-data-output-messages
      */
     struct AnelloEVK_Packet {
-        uint16_t length[3];
-        uint8_t payload[64];
-        uint8_t CRC[3];
+        uint8_t preamble;               ///< 0xD3 indicating start of Anello Packet
+        uint8_t data_length_bytes[2];   ///< 2 bytes (000000) + 10 bits for data length
+        uint8_t payload[64];            ///< data
+        uint8_t CRC[3];                 ///< 3 byte CRC
+        uint8_t data_packet_length;     ///< This is an added field for convience.
     };
 
+    /**
+     * @brief Stuct containing information required for correct parsing of a UART "message"
+     */
     struct {
-        AnelloEVK_Packet packet;
-        ParseState state;
-        uint16_t index;
+        AnelloEVK_Packet packet;    ///< The parsed Anello packet
+        ParseState state;           ///< The state of parsing
+        uint8_t index;              ///< Convience variable to help byte counting in different parsing states
     } message_in;
 
     struct {
@@ -148,6 +153,7 @@ private:
     double extract_double(const uint8_t* data, uint8_t offset) const;
     float extract_float(const uint8_t* data, uint8_t offset) const;
     Quaternion populate_quaternion(const uint8_t* data, uint8_t offset) const;
+    uint8_t data_packet_length(const AnelloEVK_Packet & packet) const;
     Vector3f populate_vector3f(const uint8_t* data, uint8_t offset) const;
     void build_packet();
     void handle_filter(const AnelloEVK_Packet &packet);
