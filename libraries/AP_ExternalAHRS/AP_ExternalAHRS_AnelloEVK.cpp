@@ -27,22 +27,12 @@
 #include <AP_InertialSensor/AP_InertialSensor.h>
 #include <GCS_MAVLink/GCS.h>
 #include <AP_Logger/AP_Logger.h>
-#include <AP_Common/NMEA.h>
 #include <stdio.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
 
 #if HAL_EXTERNAL_AHRS_ENABLED
 
 extern const AP_HAL::HAL &hal;
-
-/*
-  send requested config to the VN
- */
-void AP_ExternalAHRS_AnelloEVK::send_config(void) const
-{
-    nmea_printf(uart, "$VNWRG,75,3,%u,35,0003,0F2C,0147,0613", unsigned(400/get_rate()));
-    nmea_printf(uart, "$VNWRG,76,3,80,4E,0002,0010,20B8,2018");
-}
 
 /*
   header for pre-configured 50Hz data
@@ -206,7 +196,6 @@ void AP_ExternalAHRS_AnelloEVK::update_thread()
         // open port in the thread
         port_opened = true;
         uart->begin(baudrate, 1024, 512);
-        send_config();
     }
 
     while (true) {

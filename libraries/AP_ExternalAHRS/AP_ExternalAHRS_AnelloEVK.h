@@ -56,7 +56,6 @@ private:
 
     void process_packet1(const uint8_t *b);
     void process_packet2(const uint8_t *b);
-    void send_config(void) const;
 
     uint8_t *pktbuf;
     uint16_t pktoffset;
