@@ -24,10 +24,10 @@
 
 #include <GCS_MAVLink/GCS_MAVLink.h>
 
-class AP_ExternalAHRS_VectorNav : public AP_ExternalAHRS_backend {
+class AP_ExternalAHRS_AnelloEVK : public AP_ExternalAHRS_backend {
 
 public:
-    AP_ExternalAHRS_VectorNav(AP_ExternalAHRS *frontend, AP_ExternalAHRS::state_t &state);
+    AP_ExternalAHRS_AnelloEVK(AP_ExternalAHRS *frontend, AP_ExternalAHRS::state_t &state);
 
     // get serial port number, -1 for not enabled
     int8_t get_port(void) const override;

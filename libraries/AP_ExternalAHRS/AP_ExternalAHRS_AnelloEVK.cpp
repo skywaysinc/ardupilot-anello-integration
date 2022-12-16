@@ -18,7 +18,7 @@
 
 #define ALLOW_DOUBLE_MATH_FUNCTIONS
 
-#include "AP_ExternalAHRS_VectorNav.h"
+#include "AP_ExternalAHRS_AnelloEVK.h"
 #include <AP_Math/AP_Math.h>
 #include <AP_Math/crc.h>
 #include <AP_Baro/AP_Baro.h>
@@ -38,7 +38,7 @@ extern const AP_HAL::HAL &hal;
 /*
   send requested config to the VN
  */
-void AP_ExternalAHRS_VectorNav::send_config(void) const
+void AP_ExternalAHRS_AnelloEVK::send_config(void) const
 {
     nmea_printf(uart, "$VNWRG,75,3,%u,35,0003,0F2C,0147,0613", unsigned(400/get_rate()));
     nmea_printf(uart, "$VNWRG,76,3,80,4E,0002,0010,20B8,2018");
@@ -102,7 +102,7 @@ struct PACKED VN_packet2 {
 static_assert(sizeof(VN_packet2)+2+4*2+2 == VN_PKT2_LENGTH, "incorrect VN_packet2 length");
 
 // constructor
-AP_ExternalAHRS_VectorNav::AP_ExternalAHRS_VectorNav(AP_ExternalAHRS *_frontend,
+AP_ExternalAHRS_AnelloEVK::AP_ExternalAHRS_AnelloEVK(AP_ExternalAHRS *_frontend,
                                                      AP_ExternalAHRS::state_t &_state) :
     AP_ExternalAHRS_backend(_frontend, _state)
 {
@@ -124,7 +124,7 @@ AP_ExternalAHRS_VectorNav::AP_ExternalAHRS_VectorNav(AP_ExternalAHRS *_frontend,
         AP_BoardConfig::allocation_error("ExternalAHRS");
     }
 
-    if (!hal.scheduler->thread_create(FUNCTOR_BIND_MEMBER(&AP_ExternalAHRS_VectorNav::update_thread, void), "AHRS", 2048, AP_HAL::Scheduler::PRIORITY_SPI, 0)) {
+    if (!hal.scheduler->thread_create(FUNCTOR_BIND_MEMBER(&AP_ExternalAHRS_AnelloEVK::update_thread, void), "AHRS", 2048, AP_HAL::Scheduler::PRIORITY_SPI, 0)) {
         AP_HAL::panic("Failed to start ExternalAHRS update thread");
     }
     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "ExternalAHRS initialised");
@@ -134,7 +134,7 @@ AP_ExternalAHRS_VectorNav::AP_ExternalAHRS_VectorNav(AP_ExternalAHRS *_frontend,
   check the UART for more data
   returns true if the function should be called again straight away
  */
-bool AP_ExternalAHRS_VectorNav::check_uart()
+bool AP_ExternalAHRS_AnelloEVK::check_uart()
 {
     if (!port_opened) {
         return false;
@@ -200,7 +200,7 @@ reset:
     return true;
 }
 
-void AP_ExternalAHRS_VectorNav::update_thread()
+void AP_ExternalAHRS_AnelloEVK::update_thread()
 {
     if (!port_opened) {
         // open port in the thread
@@ -219,7 +219,7 @@ void AP_ExternalAHRS_VectorNav::update_thread()
 /*
   process packet type 1
  */
-void AP_ExternalAHRS_VectorNav::process_packet1(const uint8_t *b)
+void AP_ExternalAHRS_AnelloEVK::process_packet1(const uint8_t *b)
 {
     const struct VN_packet1 &pkt1 = *(struct VN_packet1 *)b;
     const struct VN_packet2 &pkt2 = *last_pkt2;
@@ -306,7 +306,7 @@ void AP_ExternalAHRS_VectorNav::process_packet1(const uint8_t *b)
 /*
   process packet type 2
  */
-void AP_ExternalAHRS_VectorNav::process_packet2(const uint8_t *b)
+void AP_ExternalAHRS_AnelloEVK::process_packet2(const uint8_t *b)
 {
     const struct VN_packet2 &pkt2 = *(struct VN_packet2 *)b;
     const struct VN_packet1 &pkt1 = *last_pkt1;
@@ -350,7 +350,7 @@ void AP_ExternalAHRS_VectorNav::process_packet2(const uint8_t *b)
 }
 
 // get serial port number for the uart
-int8_t AP_ExternalAHRS_VectorNav::get_port(void) const
+int8_t AP_ExternalAHRS_AnelloEVK::get_port(void) const
 {
     if (!uart) {
         return -1;
@@ -359,29 +359,29 @@ int8_t AP_ExternalAHRS_VectorNav::get_port(void) const
 };
 
 // accessors for AP_AHRS
-bool AP_ExternalAHRS_VectorNav::healthy(void) const
+bool AP_ExternalAHRS_AnelloEVK::healthy(void) const
 {
     uint32_t now = AP_HAL::millis();
     return (now - last_pkt1_ms < 40 && now - last_pkt2_ms < 500);
 }
 
-bool AP_ExternalAHRS_VectorNav::initialised(void) const
+bool AP_ExternalAHRS_AnelloEVK::initialised(void) const
 {
     return last_pkt1_ms != 0 && last_pkt2_ms != 0;
 }
 
-bool AP_ExternalAHRS_VectorNav::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const
+bool AP_ExternalAHRS_AnelloEVK::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const
 {
     if (!healthy()) {
-        hal.util->snprintf(failure_msg, failure_msg_len, "VectorNav unhealthy");
+        hal.util->snprintf(failure_msg, failure_msg_len, "AnelloEVK unhealthy");
         return false;
     }
     if (last_pkt2->GPS1Fix < 3) {
-        hal.util->snprintf(failure_msg, failure_msg_len, "VectorNav no GPS1 lock");
+        hal.util->snprintf(failure_msg, failure_msg_len, "AnelloEVK no GPS1 lock");
         return false;
     }
     if (last_pkt2->GPS2Fix < 3) {
-        hal.util->snprintf(failure_msg, failure_msg_len, "VectorNav no GPS2 lock");
+        hal.util->snprintf(failure_msg, failure_msg_len, "AnelloEVK no GPS2 lock");
         return false;
     }
     return true;
@@ -391,7 +391,7 @@ bool AP_ExternalAHRS_VectorNav::pre_arm_check(char *failure_msg, uint8_t failure
   get filter status. We don't know the meaning of the status bits yet,
   so assume all OK if we have GPS lock
  */
-void AP_ExternalAHRS_VectorNav::get_filter_status(nav_filter_status &status) const
+void AP_ExternalAHRS_AnelloEVK::get_filter_status(nav_filter_status &status) const
 {
     memset(&status, 0, sizeof(status));
     if (last_pkt1 && last_pkt2) {
@@ -415,7 +415,7 @@ void AP_ExternalAHRS_VectorNav::get_filter_status(nav_filter_status &status) con
 }
 
 // send an EKF_STATUS message to GCS
-void AP_ExternalAHRS_VectorNav::send_status_report(mavlink_channel_t chan) const
+void AP_ExternalAHRS_AnelloEVK::send_status_report(mavlink_channel_t chan) const
 {
     if (!last_pkt1) {
         return;
