@@ -54,17 +54,17 @@ private:
     void update_thread();
     bool check_uart();
 
-    void process_packet1(const uint8_t *b);
+    void process_imu_pkt(const uint8_t *b);
     void process_packet2(const uint8_t *b);
 
     uint8_t *pktbuf;
     uint16_t pktoffset;
     uint16_t bufsize;
 
-    struct VN_packet1 *last_pkt1;
+    struct ImuPkt *last_imu_pkt;
     struct VN_packet2 *last_pkt2;
 
-    uint32_t last_pkt1_ms;
+    uint32_t last_imu_pkt_ms;
     uint32_t last_pkt2_ms;
 };
 

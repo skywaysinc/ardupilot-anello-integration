@@ -34,15 +34,10 @@
 
 extern const AP_HAL::HAL &hal;
 
-/*
-  header for pre-configured 50Hz data
-  assumes the following config for VN-300:
-    $VNWRG,75,3,8,35,0003,0F2C,0147,0613*2642
-*/
-static const uint8_t vn_pkt1_header[] { 0x35, 0x03, 0x00, 0x2c, 0x0f, 0x47, 0x01, 0x13, 0x06 };
-#define VN_PKT1_LENGTH 194 // includes header
+static const uint8_t imu_pkt_header[] { 0x35, 0x03, 0x00, 0x2c, 0x0f, 0x47, 0x01, 0x13, 0x06 };
+#define imu_pkt_LENGTH 194 // includes header
 
-struct PACKED VN_packet1 {
+struct PACKED ImuPkt {
     uint64_t timeStartup;
     uint64_t timeGPS;
     float uncompAccel[3];
@@ -65,7 +60,7 @@ struct PACKED VN_packet1 {
 };
 
 // check packet size for 4 groups
-static_assert(sizeof(VN_packet1)+2+4*2+2 == VN_PKT1_LENGTH, "incorrect VN_packet1 length");
+static_assert(sizeof(ImuPkt)+2+4*2+2 == imu_pkt_LENGTH, "incorrect AnelloEVK IMU packet length");
 
 /*
   header for pre-configured 5Hz data
@@ -105,12 +100,12 @@ AP_ExternalAHRS_AnelloEVK::AP_ExternalAHRS_AnelloEVK(AP_ExternalAHRS *_frontend,
     baudrate = sm.find_baudrate(AP_SerialManager::SerialProtocol_AHRS, 0);
     port_num = sm.find_portnum(AP_SerialManager::SerialProtocol_AHRS, 0);
 
-    bufsize = MAX(VN_PKT1_LENGTH, VN_PKT2_LENGTH);
+    bufsize = MAX(imu_pkt_LENGTH, VN_PKT2_LENGTH);
     pktbuf = new uint8_t[bufsize];
-    last_pkt1 = new VN_packet1;
+    last_imu_pkt = new ImuPkt;
     last_pkt2 = new VN_packet2;
 
-    if (!pktbuf || !last_pkt1 || !last_pkt2) {
+    if (!pktbuf || !last_imu_pkt || !last_pkt2) {
         AP_BoardConfig::allocation_error("ExternalAHRS");
     }
 
@@ -143,25 +138,25 @@ bool AP_ExternalAHRS_AnelloEVK::check_uart()
         pktoffset += nread;
     }
 
-    bool match_header1, match_header2;
+    bool match_imu_header, match_header2;
 
     if (pktbuf[0] != 0xFA) {
         goto reset;
     }
 
-    match_header1 = (0 == memcmp(&pktbuf[1], vn_pkt1_header, MIN(sizeof(vn_pkt1_header), unsigned(pktoffset-1))));
+    match_imu_header = (0 == memcmp(&pktbuf[1], imu_pkt_header, MIN(sizeof(imu_pkt_header), unsigned(pktoffset-1))));
     match_header2 = (0 == memcmp(&pktbuf[1], vn_pkt2_header, MIN(sizeof(vn_pkt2_header), unsigned(pktoffset-1))));
-    if (!match_header1 && !match_header2) {
+    if (!match_imu_header && !match_header2) {
         goto reset;
     }
 
-    if (match_header1 && pktoffset >= VN_PKT1_LENGTH) {
-        uint16_t crc = crc16_ccitt(&pktbuf[1], VN_PKT1_LENGTH-1, 0);
+    if (match_imu_header && pktoffset >= imu_pkt_LENGTH) {
+        uint16_t crc = crc16_ccitt(&pktbuf[1], imu_pkt_LENGTH-1, 0);
         if (crc == 0) {
-            // got pkt1
-            process_packet1(&pktbuf[sizeof(vn_pkt1_header)+1]);
-            memmove(&pktbuf[0], &pktbuf[VN_PKT1_LENGTH], pktoffset-VN_PKT1_LENGTH);
-            pktoffset -= VN_PKT1_LENGTH;
+            // got imu_pkt
+            process_imu_pkt(&pktbuf[sizeof(imu_pkt_header)+1]);
+            memmove(&pktbuf[0], &pktbuf[imu_pkt_LENGTH], pktoffset-imu_pkt_LENGTH);
+            pktoffset -= imu_pkt_LENGTH;
         } else {
             goto reset;
         }
@@ -208,28 +203,28 @@ void AP_ExternalAHRS_AnelloEVK::update_thread()
 /*
   process packet type 1
  */
-void AP_ExternalAHRS_AnelloEVK::process_packet1(const uint8_t *b)
+void AP_ExternalAHRS_AnelloEVK::process_imu_pkt(const uint8_t *b)
 {
-    const struct VN_packet1 &pkt1 = *(struct VN_packet1 *)b;
+    const struct ImuPkt &imu_pkt = *(struct ImuPkt *)b;
     const struct VN_packet2 &pkt2 = *last_pkt2;
 
-    last_pkt1_ms = AP_HAL::millis();
-    *last_pkt1 = pkt1;
+    last_imu_pkt_ms = AP_HAL::millis();
+    *last_imu_pkt = imu_pkt;
 
     {
         WITH_SEMAPHORE(state.sem);
-        state.accel = Vector3f{pkt1.accel[0], pkt1.accel[1], pkt1.accel[2]};
-        state.gyro = Vector3f{pkt1.gyro[0], pkt1.gyro[1], pkt1.gyro[2]};
+        state.accel = Vector3f{imu_pkt.accel[0], imu_pkt.accel[1], imu_pkt.accel[2]};
+        state.gyro = Vector3f{imu_pkt.gyro[0], imu_pkt.gyro[1], imu_pkt.gyro[2]};
 
-        state.quat = Quaternion{pkt1.quaternion[3], pkt1.quaternion[0], pkt1.quaternion[1], pkt1.quaternion[2]};
+        state.quat = Quaternion{imu_pkt.quaternion[3], imu_pkt.quaternion[0], imu_pkt.quaternion[1], imu_pkt.quaternion[2]};
         state.have_quaternion = true;
 
-        state.velocity = Vector3f{pkt1.velNED[0], pkt1.velNED[1], pkt1.velNED[2]};
+        state.velocity = Vector3f{imu_pkt.velNED[0], imu_pkt.velNED[1], imu_pkt.velNED[2]};
         state.have_velocity = true;
 
-        state.location = Location{int32_t(pkt1.positionLLA[0] * 1.0e7),
-                                  int32_t(pkt1.positionLLA[1] * 1.0e7),
-                                  int32_t(pkt1.positionLLA[2] * 1.0e2),
+        state.location = Location{int32_t(imu_pkt.positionLLA[0] * 1.0e7),
+                                  int32_t(imu_pkt.positionLLA[1] * 1.0e7),
+                                  int32_t(imu_pkt.positionLLA[2] * 1.0e2),
                                   Location::AltFrame::ABSOLUTE};
         state.have_location = true;
     }
@@ -237,7 +232,7 @@ void AP_ExternalAHRS_AnelloEVK::process_packet1(const uint8_t *b)
     {
         AP_ExternalAHRS::baro_data_message_t baro;
         baro.instance = 0;
-        baro.pressure_pa = pkt1.pressure*1e3;
+        baro.pressure_pa = imu_pkt.pressure*1e3;
         baro.temperature = pkt2.temp;
 
         AP::baro().handle_external(baro);
@@ -245,7 +240,7 @@ void AP_ExternalAHRS_AnelloEVK::process_packet1(const uint8_t *b)
 
     {
         AP_ExternalAHRS::mag_data_message_t mag;
-        mag.field = Vector3f{pkt1.mag[0], pkt1.mag[1], pkt1.mag[2]};
+        mag.field = Vector3f{imu_pkt.mag[0], imu_pkt.mag[1], imu_pkt.mag[2]};
         mag.field *= 1000; // to mGauss
 
         AP::compass().handle_external(mag);
@@ -284,12 +279,12 @@ void AP_ExternalAHRS_AnelloEVK::process_packet1(const uint8_t *b)
                        "sdddnnnDUmmnddd", "F000000GG000000",
                        "QffffffLLffffff",
                        AP_HAL::micros64(),
-                       pkt1.ypr[2], pkt1.ypr[1], pkt1.ypr[0],
-                       pkt1.velNED[0], pkt1.velNED[1], pkt1.velNED[2],
-                       int32_t(pkt1.positionLLA[0]*1.0e7), int32_t(pkt1.positionLLA[1]*1.0e7),
-                       float(pkt1.positionLLA[2]),
-                       pkt1.posU, pkt1.velU,
-                       pkt1.yprU[2], pkt1.yprU[1], pkt1.yprU[0]);
+                       imu_pkt.ypr[2], imu_pkt.ypr[1], imu_pkt.ypr[0],
+                       imu_pkt.velNED[0], imu_pkt.velNED[1], imu_pkt.velNED[2],
+                       int32_t(imu_pkt.positionLLA[0]*1.0e7), int32_t(imu_pkt.positionLLA[1]*1.0e7),
+                       float(imu_pkt.positionLLA[2]),
+                       imu_pkt.posU, imu_pkt.velU,
+                       imu_pkt.yprU[2], imu_pkt.yprU[1], imu_pkt.yprU[0]);
 }
 
 /*
@@ -298,7 +293,7 @@ void AP_ExternalAHRS_AnelloEVK::process_packet1(const uint8_t *b)
 void AP_ExternalAHRS_AnelloEVK::process_packet2(const uint8_t *b)
 {
     const struct VN_packet2 &pkt2 = *(struct VN_packet2 *)b;
-    const struct VN_packet1 &pkt1 = *last_pkt1;
+    const struct ImuPkt &imu_pkt = *last_imu_pkt;
 
     last_pkt2_ms = AP_HAL::millis();
     *last_pkt2 = pkt2;
@@ -311,9 +306,9 @@ void AP_ExternalAHRS_AnelloEVK::process_packet2(const uint8_t *b)
     gps.fix_type = pkt2.GPS1Fix;
     gps.satellites_in_view = pkt2.numGPS1Sats;
 
-    gps.horizontal_pos_accuracy = pkt1.posU;
-    gps.vertical_pos_accuracy = pkt1.posU;
-    gps.horizontal_vel_accuracy = pkt1.velU;
+    gps.horizontal_pos_accuracy = imu_pkt.posU;
+    gps.vertical_pos_accuracy = imu_pkt.posU;
+    gps.horizontal_vel_accuracy = imu_pkt.velU;
 
     gps.hdop = pkt2.GPS1DOP[4];
     gps.vdop = pkt2.GPS1DOP[3];
@@ -351,12 +346,12 @@ int8_t AP_ExternalAHRS_AnelloEVK::get_port(void) const
 bool AP_ExternalAHRS_AnelloEVK::healthy(void) const
 {
     uint32_t now = AP_HAL::millis();
-    return (now - last_pkt1_ms < 40 && now - last_pkt2_ms < 500);
+    return (now - last_imu_pkt_ms < 40 && now - last_pkt2_ms < 500);
 }
 
 bool AP_ExternalAHRS_AnelloEVK::initialised(void) const
 {
-    return last_pkt1_ms != 0 && last_pkt2_ms != 0;
+    return last_imu_pkt_ms != 0 && last_pkt2_ms != 0;
 }
 
 bool AP_ExternalAHRS_AnelloEVK::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const
@@ -383,7 +378,7 @@ bool AP_ExternalAHRS_AnelloEVK::pre_arm_check(char *failure_msg, uint8_t failure
 void AP_ExternalAHRS_AnelloEVK::get_filter_status(nav_filter_status &status) const
 {
     memset(&status, 0, sizeof(status));
-    if (last_pkt1 && last_pkt2) {
+    if (last_imu_pkt && last_pkt2) {
         status.flags.initalized = 1;
     }
     if (healthy() && last_pkt2) {
@@ -406,7 +401,7 @@ void AP_ExternalAHRS_AnelloEVK::get_filter_status(nav_filter_status &status) con
 // send an EKF_STATUS message to GCS
 void AP_ExternalAHRS_AnelloEVK::send_status_report(mavlink_channel_t chan) const
 {
-    if (!last_pkt1) {
+    if (!last_imu_pkt) {
         return;
     }
     // prepare flags
@@ -448,13 +443,13 @@ void AP_ExternalAHRS_AnelloEVK::send_status_report(mavlink_channel_t chan) const
     }
 
     // send message
-    const struct VN_packet1 &pkt1 = *(struct VN_packet1 *)last_pkt1;
+    const struct ImuPkt &imu_pkt = *(struct ImuPkt *)last_imu_pkt;
     const float vel_gate = 5;
     const float pos_gate = 5;
     const float hgt_gate = 5;
     const float mag_var = 0;
     mavlink_msg_ekf_status_report_send(chan, flags,
-                                       pkt1.velU/vel_gate, pkt1.posU/pos_gate, pkt1.posU/hgt_gate,
+                                       imu_pkt.velU/vel_gate, imu_pkt.posU/pos_gate, imu_pkt.posU/hgt_gate,
                                        mag_var, 0, 0);
 }
 
