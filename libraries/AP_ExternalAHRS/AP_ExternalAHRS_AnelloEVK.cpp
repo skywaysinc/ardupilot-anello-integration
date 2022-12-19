@@ -34,33 +34,25 @@
 
 extern const AP_HAL::HAL &hal;
 
-static const uint8_t imu_pkt_header[] { 0x35, 0x03, 0x00, 0x2c, 0x0f, 0x47, 0x01, 0x13, 0x06 };
-#define imu_pkt_LENGTH 194 // includes header
+// ImuPkt definitions
+// see: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#imu
+// All IMU messages have the same header
+static const uint8_t imu_pkt_header[] { 0x01, 0xD0, 0xFD, 0xA1 };
+#define imu_pkt_LENGTH 55 // includes header for imu msg and CRC
 
+// Struct to hold data from imu message (no header)
 struct PACKED ImuPkt {
-    uint64_t timeStartup;
-    uint64_t timeGPS;
-    float uncompAccel[3];
-    float uncompAngRate[3];
-    float pressure;
-    float mag[3];
-    float accel[3];
-    float gyro[3];
-    uint16_t sensSat;
-    uint16_t AHRSStatus;
-    float ypr[3];
-    float quaternion[4];
-    float linAccBody[3];
-    float yprU[3];
-    uint16_t INSStatus;
-    double positionLLA[3];
-    float velNED[3];
-    float posU;
-    float velU;
+    uint64_t mcuTime;
+    int64_t odrTime;
+    int32_t accel[3];
+    int32_t gyro[3];
+    int32_t optGyroZ;
+    int16_t odrVal;
+    int16_t temp;
 };
 
-// check packet size for 4 groups
-static_assert(sizeof(ImuPkt)+2+4*2+2 == imu_pkt_LENGTH, "incorrect AnelloEVK IMU packet length");
+// check packet size : header + data + CRC (3 bytes)
+static_assert(sizeof(ImuPkt)+sizeof(imu_pkt_header)+3 == imu_pkt_LENGTH, "incorrect AnelloEVK IMU packet length");
 
 /*
   header for pre-configured 5Hz data
@@ -140,7 +132,9 @@ bool AP_ExternalAHRS_AnelloEVK::check_uart()
 
     bool match_imu_header, match_header2;
 
-    if (pktbuf[0] != 0xFA) {
+    // Check for preamble as specified by Anello
+    // see: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#message-format
+    if (pktbuf[0] != 0xD3) {
         goto reset;
     }
 
@@ -211,40 +205,12 @@ void AP_ExternalAHRS_AnelloEVK::process_imu_pkt(const uint8_t *b)
     last_imu_pkt_ms = AP_HAL::millis();
     *last_imu_pkt = imu_pkt;
 
-    {
         WITH_SEMAPHORE(state.sem);
-        state.accel = Vector3f{imu_pkt.accel[0], imu_pkt.accel[1], imu_pkt.accel[2]};
-        state.gyro = Vector3f{imu_pkt.gyro[0], imu_pkt.gyro[1], imu_pkt.gyro[2]};
+        state.accel = Vector3f{float(imu_pkt.accel[0]), float(imu_pkt.accel[1]), float(imu_pkt.accel[2])};
+        state.accel *= 143165577; //convert to g's
 
-        state.quat = Quaternion{imu_pkt.quaternion[3], imu_pkt.quaternion[0], imu_pkt.quaternion[1], imu_pkt.quaternion[2]};
-        state.have_quaternion = true;
-
-        state.velocity = Vector3f{imu_pkt.velNED[0], imu_pkt.velNED[1], imu_pkt.velNED[2]};
-        state.have_velocity = true;
-
-        state.location = Location{int32_t(imu_pkt.positionLLA[0] * 1.0e7),
-                                  int32_t(imu_pkt.positionLLA[1] * 1.0e7),
-                                  int32_t(imu_pkt.positionLLA[2] * 1.0e2),
-                                  Location::AltFrame::ABSOLUTE};
-        state.have_location = true;
-    }
-    
-    {
-        AP_ExternalAHRS::baro_data_message_t baro;
-        baro.instance = 0;
-        baro.pressure_pa = imu_pkt.pressure*1e3;
-        baro.temperature = pkt2.temp;
-
-        AP::baro().handle_external(baro);
-    }
-
-    {
-        AP_ExternalAHRS::mag_data_message_t mag;
-        mag.field = Vector3f{imu_pkt.mag[0], imu_pkt.mag[1], imu_pkt.mag[2]};
-        mag.field *= 1000; // to mGauss
-
-        AP::compass().handle_external(mag);
-    }
+        state.gyro = Vector3f{float(imu_pkt.gyro[0]), float(imu_pkt.gyro[1]), float(imu_pkt.gyro[2])};
+        state.gyro *= 4772186; //convert to deg/s
 
     {
         AP_ExternalAHRS::ins_data_message_t ins;
@@ -275,17 +241,14 @@ void AP_ExternalAHRS_AnelloEVK::process_imu_pkt(const uint8_t *b)
     // @Field: UP: uncertainty in pitch
     // @Field: UY: uncertainty in yaw
 
-    AP::logger().WriteStreaming("EAH1", "TimeUS,Roll,Pitch,Yaw,VN,VE,VD,Lat,Lon,Alt,UXY,UV,UR,UP,UY",
-                       "sdddnnnDUmmnddd", "F000000GG000000",
-                       "QffffffLLffffff",
+    AP::logger().WriteStreaming("EAH1", "TimeUS,AX,AY,AZ,WX,WY,WZ,WZ_Fog",
+                       "s????kkkk", "F0000000",
+                       "Qiiiiii",
                        AP_HAL::micros64(),
-                       imu_pkt.ypr[2], imu_pkt.ypr[1], imu_pkt.ypr[0],
-                       imu_pkt.velNED[0], imu_pkt.velNED[1], imu_pkt.velNED[2],
-                       int32_t(imu_pkt.positionLLA[0]*1.0e7), int32_t(imu_pkt.positionLLA[1]*1.0e7),
-                       float(imu_pkt.positionLLA[2]),
-                       imu_pkt.posU, imu_pkt.velU,
-                       imu_pkt.yprU[2], imu_pkt.yprU[1], imu_pkt.yprU[0]);
-}
+                       imu_pkt.accel[0], imu_pkt.accel[1], imu_pkt.accel[2],
+                       imu_pkt.gyro[0], imu_pkt.gyro[1], imu_pkt.gyro[2], imu_pkt.optGyroZ
+                       );
+};
 
 /*
   process packet type 2
@@ -293,7 +256,6 @@ void AP_ExternalAHRS_AnelloEVK::process_imu_pkt(const uint8_t *b)
 void AP_ExternalAHRS_AnelloEVK::process_packet2(const uint8_t *b)
 {
     const struct VN_packet2 &pkt2 = *(struct VN_packet2 *)b;
-    const struct ImuPkt &imu_pkt = *last_imu_pkt;
 
     last_pkt2_ms = AP_HAL::millis();
     *last_pkt2 = pkt2;
@@ -305,10 +267,6 @@ void AP_ExternalAHRS_AnelloEVK::process_packet2(const uint8_t *b)
     gps.ms_tow = (pkt2.timeGPS / 1000000ULL) % (60*60*24*7*1000ULL);
     gps.fix_type = pkt2.GPS1Fix;
     gps.satellites_in_view = pkt2.numGPS1Sats;
-
-    gps.horizontal_pos_accuracy = imu_pkt.posU;
-    gps.vertical_pos_accuracy = imu_pkt.posU;
-    gps.horizontal_vel_accuracy = imu_pkt.velU;
 
     gps.hdop = pkt2.GPS1DOP[4];
     gps.vdop = pkt2.GPS1DOP[3];
@@ -443,13 +401,14 @@ void AP_ExternalAHRS_AnelloEVK::send_status_report(mavlink_channel_t chan) const
     }
 
     // send message
-    const struct ImuPkt &imu_pkt = *(struct ImuPkt *)last_imu_pkt;
     const float vel_gate = 5;
     const float pos_gate = 5;
     const float hgt_gate = 5;
     const float mag_var = 0;
+
+    // TODO: update this once we have velocity data from sensor
     mavlink_msg_ekf_status_report_send(chan, flags,
-                                       imu_pkt.velU/vel_gate, imu_pkt.posU/pos_gate, imu_pkt.posU/hgt_gate,
+                                       0/vel_gate, 0/pos_gate, 0/hgt_gate,
                                        mag_var, 0, 0);
 }
 
