@@ -55,17 +55,17 @@ private:
     bool check_uart();
 
     void process_imu_pkt(const uint8_t *b);
-    void process_packet2(const uint8_t *b);
+    void process_gps_pkt(const uint8_t *b);
 
     uint8_t *pktbuf;
     uint16_t pktoffset;
     uint16_t bufsize;
 
     struct ImuPkt *last_imu_pkt;
-    struct VN_packet2 *last_pkt2;
+    struct GpsPkt *last_gps_pkt;
 
     uint32_t last_imu_pkt_ms;
-    uint32_t last_pkt2_ms;
+    uint32_t last_gps_pkt_ms;
 };
 
 #endif  // HAL_EXTERNAL_AHRS_ENABLED

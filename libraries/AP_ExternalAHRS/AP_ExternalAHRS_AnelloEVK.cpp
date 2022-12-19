@@ -38,7 +38,6 @@ extern const AP_HAL::HAL &hal;
 // see: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#imu
 // All IMU messages have the same header
 static const uint8_t imu_pkt_header[] { 0x01, 0xD0, 0xFD, 0xA1 };
-#define imu_pkt_LENGTH 55 // includes header for imu msg and CRC
 
 // Struct to hold data from imu message (no header)
 struct PACKED ImuPkt {
@@ -50,33 +49,40 @@ struct PACKED ImuPkt {
     int16_t odrVal;
     int16_t temp;
 };
-
+#define imu_pkt_LENGTH 55 // includes header for imu msg and CRC
 // check packet size : header + data + CRC (3 bytes)
 static_assert(sizeof(ImuPkt)+sizeof(imu_pkt_header)+3 == imu_pkt_LENGTH, "incorrect AnelloEVK IMU packet length");
 
-/*
-  header for pre-configured 5Hz data
-  assumes the following VN-300 config:
-    $VNWRG,76,3,80,4E,0002,0010,20B8,2018*A66B
-*/
-static const uint8_t vn_pkt2_header[] { 0x4e, 0x02, 0x00, 0x10, 0x00, 0xb8, 0x20, 0x18, 0x20 };
-#define VN_PKT2_LENGTH 120 // includes header
 
-struct PACKED VN_packet2 {
+// GpsPkt definitions
+// see: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#gps-pvt
+// All GPS messages have the same header
+
+static const uint8_t gps_pkt_header[] { 0x02, 0x00, 0xFD, 0xA2 };
+#define gps_pkt_LENGTH 69 // includes header for gps msg and CRC
+
+struct PACKED GpsPkt {
+    uint64_t timePowerOn;
     uint64_t timeGPS;
-    float temp;
-    uint8_t numGPS1Sats;
-    uint8_t GPS1Fix;
-    double GPS1posLLA[3];
-    float GPS1velNED[3];
-    float GPS1DOP[7];
-    uint8_t numGPS2Sats;
-    uint8_t GPS2Fix;
-    float GPS2DOP[7];
+    int32_t Latitude;
+    int32_t Longitude;
+    int32_t EllipsoidHgt;
+    int32_t MslHgt;
+    int32_t Spd;
+    int32_t GnssHeading;
+    uint32_t HorizontalAcc;
+    uint32_t VerticalAcc;
+    uint32_t SpdAcc;
+    uint32_t HeadingAcc;
+    uint16_t GPSDOP;
+    uint8_t GPSFix;
+    uint8_t numGPSSats;
+    uint8_t RtkStatus;
+    uint8_t AntId;
 };
 
-// check packet size for 4 groups
-static_assert(sizeof(VN_packet2)+2+4*2+2 == VN_PKT2_LENGTH, "incorrect VN_packet2 length");
+// check packet size : header + data + CRC (3 bytes)
+static_assert(sizeof(GpsPkt) + sizeof(gps_pkt_header)+3 == gps_pkt_LENGTH, "incorrect AnelloEVK GPS packet length");
 
 // constructor
 AP_ExternalAHRS_AnelloEVK::AP_ExternalAHRS_AnelloEVK(AP_ExternalAHRS *_frontend,
@@ -92,12 +98,12 @@ AP_ExternalAHRS_AnelloEVK::AP_ExternalAHRS_AnelloEVK(AP_ExternalAHRS *_frontend,
     baudrate = sm.find_baudrate(AP_SerialManager::SerialProtocol_AHRS, 0);
     port_num = sm.find_portnum(AP_SerialManager::SerialProtocol_AHRS, 0);
 
-    bufsize = MAX(imu_pkt_LENGTH, VN_PKT2_LENGTH);
+    bufsize = MAX(imu_pkt_LENGTH, gps_pkt_LENGTH);
     pktbuf = new uint8_t[bufsize];
     last_imu_pkt = new ImuPkt;
-    last_pkt2 = new VN_packet2;
+    last_gps_pkt = new GpsPkt;
 
-    if (!pktbuf || !last_imu_pkt || !last_pkt2) {
+    if (!pktbuf || !last_imu_pkt || !last_gps_pkt) {
         AP_BoardConfig::allocation_error("ExternalAHRS");
     }
 
@@ -130,7 +136,7 @@ bool AP_ExternalAHRS_AnelloEVK::check_uart()
         pktoffset += nread;
     }
 
-    bool match_imu_header, match_header2;
+    bool match_imu_header, match_gps_header;
 
     // Check for preamble as specified by Anello
     // see: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#message-format
@@ -139,8 +145,8 @@ bool AP_ExternalAHRS_AnelloEVK::check_uart()
     }
 
     match_imu_header = (0 == memcmp(&pktbuf[1], imu_pkt_header, MIN(sizeof(imu_pkt_header), unsigned(pktoffset-1))));
-    match_header2 = (0 == memcmp(&pktbuf[1], vn_pkt2_header, MIN(sizeof(vn_pkt2_header), unsigned(pktoffset-1))));
-    if (!match_imu_header && !match_header2) {
+    match_gps_header = (0 == memcmp(&pktbuf[1], gps_pkt_header, MIN(sizeof(gps_pkt_header), unsigned(pktoffset-1))));
+    if (!match_imu_header && !match_gps_header) {
         goto reset;
     }
 
@@ -148,19 +154,15 @@ bool AP_ExternalAHRS_AnelloEVK::check_uart()
         uint16_t crc = crc16_ccitt(&pktbuf[1], imu_pkt_LENGTH-1, 0);
         if (crc == 0) {
             // got imu_pkt
-            process_imu_pkt(&pktbuf[sizeof(imu_pkt_header)+1]);
-            memmove(&pktbuf[0], &pktbuf[imu_pkt_LENGTH], pktoffset-imu_pkt_LENGTH);
-            pktoffset -= imu_pkt_LENGTH;
-        } else {
             goto reset;
         }
-    } else if (match_header2 && pktoffset >= VN_PKT2_LENGTH) {
-        uint16_t crc = crc16_ccitt(&pktbuf[1], VN_PKT2_LENGTH-1, 0);
+    } else if (match_gps_header && pktoffset >= gps_pkt_LENGTH) {
+        uint16_t crc = crc16_ccitt(&pktbuf[1], gps_pkt_LENGTH-1, 0);
         if (crc == 0) {
-            // got pkt2
-            process_packet2(&pktbuf[sizeof(vn_pkt2_header)+1]);
-            memmove(&pktbuf[0], &pktbuf[VN_PKT2_LENGTH], pktoffset-VN_PKT2_LENGTH);
-            pktoffset -= VN_PKT2_LENGTH;
+            // got gps_pkt
+            process_gps_pkt(&pktbuf[sizeof(gps_pkt_header)+1]);
+            memmove(&pktbuf[0], &pktbuf[gps_pkt_LENGTH], pktoffset-gps_pkt_LENGTH);
+            pktoffset -= gps_pkt_LENGTH;
         } else {
             goto reset;
         }
@@ -168,7 +170,7 @@ bool AP_ExternalAHRS_AnelloEVK::check_uart()
     return true;
 
 reset:
-    uint8_t *p = (uint8_t *)memchr(&pktbuf[1], (char)0xFA, pktoffset-1);
+    uint8_t *p = (uint8_t *)memchr(&pktbuf[1], (char)0xD3, pktoffset-1);
     if (p) {
         uint8_t newlen = pktoffset - (p - pktbuf);
         memmove(&pktbuf[0], p, newlen);
@@ -195,12 +197,11 @@ void AP_ExternalAHRS_AnelloEVK::update_thread()
 }
 
 /*
-  process packet type 1
+  process imu packet
  */
 void AP_ExternalAHRS_AnelloEVK::process_imu_pkt(const uint8_t *b)
 {
     const struct ImuPkt &imu_pkt = *(struct ImuPkt *)b;
-    const struct VN_packet2 &pkt2 = *last_pkt2;
 
     last_imu_pkt_ms = AP_HAL::millis();
     *last_imu_pkt = imu_pkt;
@@ -217,7 +218,7 @@ void AP_ExternalAHRS_AnelloEVK::process_imu_pkt(const uint8_t *b)
 
         ins.accel = state.accel;
         ins.gyro = state.gyro;
-        ins.temperature = pkt2.temp;
+        ins.temperature = imu_pkt.temp;
 
         AP::ins().handle_external(ins);
     }
@@ -251,39 +252,39 @@ void AP_ExternalAHRS_AnelloEVK::process_imu_pkt(const uint8_t *b)
 };
 
 /*
-  process packet type 2
+  process gps packet
  */
-void AP_ExternalAHRS_AnelloEVK::process_packet2(const uint8_t *b)
+void AP_ExternalAHRS_AnelloEVK::process_gps_pkt(const uint8_t *b)
 {
-    const struct VN_packet2 &pkt2 = *(struct VN_packet2 *)b;
+    const struct GpsPkt &pkt2 = *(struct GpsPkt *)b;
 
-    last_pkt2_ms = AP_HAL::millis();
-    *last_pkt2 = pkt2;
+    last_gps_pkt_ms = AP_HAL::millis();
+    *last_gps_pkt = pkt2;
 
     AP_ExternalAHRS::gps_data_message_t gps;
 
     // get ToW in milliseconds
     gps.gps_week = pkt2.timeGPS / (AP_MSEC_PER_WEEK * 1000000ULL);
     gps.ms_tow = (pkt2.timeGPS / 1000000ULL) % (60*60*24*7*1000ULL);
-    gps.fix_type = pkt2.GPS1Fix;
-    gps.satellites_in_view = pkt2.numGPS1Sats;
+    gps.fix_type = pkt2.GPSFix;
+    gps.satellites_in_view = pkt2.numGPSSats;
 
-    gps.hdop = pkt2.GPS1DOP[4];
-    gps.vdop = pkt2.GPS1DOP[3];
+    gps.hdop = pkt2.GPSDOP;
+    gps.vdop = pkt2.GPSDOP;
 
-    gps.latitude = pkt2.GPS1posLLA[0] * 1.0e7;
-    gps.longitude = pkt2.GPS1posLLA[1] * 1.0e7;
-    gps.msl_altitude = pkt2.GPS1posLLA[2] * 1.0e2;
+    gps.latitude = pkt2.Latitude * 1.0e7;
+    gps.longitude = pkt2.Longitude * 1.0e7;
+    gps.msl_altitude = pkt2.MslHgt * 1.0e2;
 
-    gps.ned_vel_north = pkt2.GPS1velNED[0];
-    gps.ned_vel_east = pkt2.GPS1velNED[1];
-    gps.ned_vel_down = pkt2.GPS1velNED[2];
+    gps.ned_vel_north = pkt2.Spd;
+    gps.ned_vel_east = 0;
+    gps.ned_vel_down = 0;
 
     if (gps.fix_type >= 3 && !state.have_origin) {
         WITH_SEMAPHORE(state.sem);
-        state.origin = Location{int32_t(pkt2.GPS1posLLA[0] * 1.0e7),
-                                int32_t(pkt2.GPS1posLLA[1] * 1.0e7),
-                                int32_t(pkt2.GPS1posLLA[2] * 1.0e2),
+        state.origin = Location{int32_t(pkt2.Latitude * 1.0e7),
+                                int32_t(pkt2.Longitude * 1.0e7),
+                                int32_t(pkt2.MslHgt * 1.0e2),
                                 Location::AltFrame::ABSOLUTE};
         state.have_origin = true;
     }
@@ -304,12 +305,12 @@ int8_t AP_ExternalAHRS_AnelloEVK::get_port(void) const
 bool AP_ExternalAHRS_AnelloEVK::healthy(void) const
 {
     uint32_t now = AP_HAL::millis();
-    return (now - last_imu_pkt_ms < 40 && now - last_pkt2_ms < 500);
+    return (now - last_imu_pkt_ms < 40 && now - last_gps_pkt_ms < 500);
 }
 
 bool AP_ExternalAHRS_AnelloEVK::initialised(void) const
 {
-    return last_imu_pkt_ms != 0 && last_pkt2_ms != 0;
+    return last_imu_pkt_ms != 0 && last_gps_pkt_ms != 0;
 }
 
 bool AP_ExternalAHRS_AnelloEVK::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const
@@ -318,12 +319,8 @@ bool AP_ExternalAHRS_AnelloEVK::pre_arm_check(char *failure_msg, uint8_t failure
         hal.util->snprintf(failure_msg, failure_msg_len, "AnelloEVK unhealthy");
         return false;
     }
-    if (last_pkt2->GPS1Fix < 3) {
-        hal.util->snprintf(failure_msg, failure_msg_len, "AnelloEVK no GPS1 lock");
-        return false;
-    }
-    if (last_pkt2->GPS2Fix < 3) {
-        hal.util->snprintf(failure_msg, failure_msg_len, "AnelloEVK no GPS2 lock");
+    if (last_gps_pkt->GPSFix < 3) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "AnelloEVK no GPS lock");
         return false;
     }
     return true;
@@ -336,16 +333,16 @@ bool AP_ExternalAHRS_AnelloEVK::pre_arm_check(char *failure_msg, uint8_t failure
 void AP_ExternalAHRS_AnelloEVK::get_filter_status(nav_filter_status &status) const
 {
     memset(&status, 0, sizeof(status));
-    if (last_imu_pkt && last_pkt2) {
+    if (last_imu_pkt && last_gps_pkt) {
         status.flags.initalized = 1;
     }
-    if (healthy() && last_pkt2) {
+    if (healthy() && last_gps_pkt) {
         status.flags.attitude = 1;
         status.flags.vert_vel = 1;
         status.flags.vert_pos = 1;
 
-        const struct VN_packet2 &pkt2 = *last_pkt2;
-        if (pkt2.GPS1Fix >= 3) {
+        const struct GpsPkt &pkt2 = *last_gps_pkt;
+        if (pkt2.GPSFix >= 3) {
             status.flags.horiz_vel = 1;
             status.flags.horiz_pos_rel = 1;
             status.flags.horiz_pos_abs = 1;
