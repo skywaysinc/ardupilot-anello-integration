@@ -11,26 +11,26 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 /*
-  suppport for serial connected AHRS systems
+  support for serial connected AHRS systems
  */
 
 #pragma once
 
 #include "AP_ExternalAHRS_backend.h"
 
-#ifndef HAL_EXTERNAL_AHRS_LORD_ENABLED
-#define HAL_EXTERNAL_AHRS_LORD_ENABLED HAL_EXTERNAL_AHRS_ENABLED
+#ifndef HAL_EXTERNAL_AHRS_ANELLO_EVK_ENABLED
+#define HAL_EXTERNAL_AHRS_ANELLO_EVK_ENABLED HAL_EXTERNAL_AHRS_ENABLED
 #endif
 
-#if HAL_EXTERNAL_AHRS_LORD_ENABLED
+#if HAL_EXTERNAL_AHRS_ANELLO_EVK_ENABLED
 
 #include <GCS_MAVLink/GCS_MAVLink.h>
 
-class AP_ExternalAHRS_LORD: public AP_ExternalAHRS_backend
+class AP_ExternalAHRS_AnelloEVK: public AP_ExternalAHRS_backend
 {
 public:
 
-    AP_ExternalAHRS_LORD(AP_ExternalAHRS *frontend, AP_ExternalAHRS::state_t &state);
+    AP_ExternalAHRS_AnelloEVK(AP_ExternalAHRS *frontend, AP_ExternalAHRS::state_t &state);
 
     // get serial port number, -1 for not enabled
     int8_t get_port(void) const override;
@@ -74,15 +74,15 @@ private:
     uint32_t last_gps_pkt;
     uint32_t last_filter_pkt;
 
-    // A LORD packet can be a maximum of 261 bytes
-    struct LORD_Packet {
+    // A AnelloEVK packet can be a maximum of 261 bytes
+    struct AnelloEVK_Packet {
         uint8_t header[4];
         uint8_t payload[255];
         uint8_t checksum[2];
     };
 
     struct {
-        LORD_Packet packet;
+        AnelloEVK_Packet packet;
         ParseState state;
         uint8_t index;
     } message_in;
@@ -134,11 +134,11 @@ private:
     } filter_data;
 
     void build_packet();
-    bool valid_packet(const LORD_Packet &packet) const;
-    void handle_packet(const LORD_Packet &packet);
-    void handle_imu(const LORD_Packet &packet);
-    void handle_gnss(const LORD_Packet &packet);
-    void handle_filter(const LORD_Packet &packet);
+    bool valid_packet(const AnelloEVK_Packet &packet) const;
+    void handle_packet(const AnelloEVK_Packet &packet);
+    void handle_imu(const AnelloEVK_Packet &packet);
+    void handle_gnss(const AnelloEVK_Packet &packet);
+    void handle_filter(const AnelloEVK_Packet &packet);
     void post_imu() const;
     void post_gnss() const;
     void post_filter() const;
