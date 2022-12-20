@@ -50,10 +50,8 @@ public:
 private:
 
     enum class ParseState {
-        WaitingFor_SyncOne,
-        WaitingFor_SyncTwo,
-        WaitingFor_Descriptor,
-        WaitingFor_PayloadLength,
+        WaitingFor_PktIdentifier,
+        WaitingFor_MsgDescriptor,
         WaitingFor_Data,
         WaitingFor_Checksum
     };
@@ -67,7 +65,7 @@ private:
     int8_t port_num;
     bool port_open = false;
 
-    const uint8_t SYNC_ONE = 0x75;
+    const uint8_t PKT_IDENTIFIER = 0x75;
     const uint8_t SYNC_TWO = 0x65;
 
     uint32_t last_ins_pkt;

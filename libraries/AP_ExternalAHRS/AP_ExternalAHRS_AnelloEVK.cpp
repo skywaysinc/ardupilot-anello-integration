@@ -118,28 +118,19 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
         }
 
         switch (message_in.state) {
-        case ParseState::WaitingFor_SyncOne:
-            if (b == SYNC_ONE) {
+        case ParseState::WaitingFor_PktIdentifier:
+            if (b == PKT_IDENTIFIER) {
                 message_in.packet.header[0] = b;
-                message_in.state = ParseState::WaitingFor_SyncTwo;
+                message_in.state = ParseState::WaitingFor_MsgDescriptor;
             }
             break;
-        case ParseState::WaitingFor_SyncTwo:
+        case ParseState::WaitingFor_MsgDescriptor:
             if (b == SYNC_TWO) {
                 message_in.packet.header[1] = b;
-                message_in.state = ParseState::WaitingFor_Descriptor;
+                message_in.state = ParseState::WaitingFor_Data;
             } else {
-                message_in.state = ParseState::WaitingFor_SyncOne;
+                message_in.state = ParseState::WaitingFor_PktIdentifier;
             }
-            break;
-        case ParseState::WaitingFor_Descriptor:
-            message_in.packet.header[2] = b;
-            message_in.state = ParseState::WaitingFor_PayloadLength;
-            break;
-        case ParseState::WaitingFor_PayloadLength:
-            message_in.packet.header[3] = b;
-            message_in.state = ParseState::WaitingFor_Data;
-            message_in.index = 0;
             break;
         case ParseState::WaitingFor_Data:
             message_in.packet.payload[message_in.index++] = b;
@@ -151,7 +142,7 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
         case ParseState::WaitingFor_Checksum:
             message_in.packet.checksum[message_in.index++] = b;
             if (message_in.index >= 2) {
-                message_in.state = ParseState::WaitingFor_SyncOne;
+                message_in.state = ParseState::WaitingFor_PktIdentifier;
                 message_in.index = 0;
 
                 if (valid_packet(message_in.packet)) {
