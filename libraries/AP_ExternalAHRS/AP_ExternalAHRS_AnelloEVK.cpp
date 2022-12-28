@@ -116,22 +116,37 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
         if (b < 0) {
             break;
         }
-
         switch (message_in.state) {
         case ParseState::WaitingFor_PktIdentifier:
             if (b == PKT_IDENTIFIER) {
-                message_in.packet.header[0] = b;
                 message_in.state = ParseState::WaitingFor_MsgDescriptor;
+                message_in.index = 0;
             }
             break;
         case ParseState::WaitingFor_MsgDescriptor:
-            if (b == SYNC_TWO) {
-                message_in.packet.header[1] = b;
-                message_in.state = ParseState::WaitingFor_Data;
+            if (b != COMMA_DELIMITER) {
+                message_in.packet.header[message_in.index++] = b;
+                break;
             } else {
-                message_in.state = ParseState::WaitingFor_PktIdentifier;
+                message_in.state = ParseState::WaitingFor_Data;
+                message_in.index = 0;
+                // Calculate how many commas we should look for
+                if (message_in.packet.header == IMU_HEADER) {
+                    message_in.num_values = NumPacketMembers::IMU;
+                    break;
+                } else if (message_in.packet.header == GPS_HEADER) {
+                    message_in.num_values = NumPacketMembers::GPS;
+                    break;
+                } else if (message_in.packet.header == INS_HEADER) {
+                    message_in.num_values = NumPacketMembers::INS;
+                    break;
+                } else {
+                    // not a valid message, go back to waiting for identifier
+                    message_in.state = ParseState::WaitingFor_PktIdentifier;
+                    message_in.index = 0;
+                    break;
+                }
             }
-            break;
         case ParseState::WaitingFor_Data:
             message_in.packet.payload[message_in.index++] = b;
             if (message_in.index >= message_in.packet.header[3]) {

@@ -56,6 +56,12 @@ private:
         WaitingFor_Checksum
     };
 
+    enum class NumPacketMembers {
+        IMU = 0x1B,
+        GPS = 0x10,
+        INS = 0x0D,
+    };
+
     void update_thread();
 
     AP_HAL::UARTDriver *uart;
@@ -65,8 +71,11 @@ private:
     int8_t port_num;
     bool port_open = false;
 
-    const uint8_t PKT_IDENTIFIER = 0x75;
-    const uint8_t SYNC_TWO = 0x65;
+    const uint8_t PKT_IDENTIFIER = 0x23; // #
+    const uint8_t COMMA_DELIMITER = 0x2C; // ,
+    uint8_t IMU_HEADER[6] = {0x41, 0x50, 0x49, 0x4D, 0x55}; // APIMU
+    uint8_t GPS_HEADER[6] = {0x41, 0x50, 0x47, 0x50, 0x53}; // APGPS
+    uint8_t INS_HEADER[6] = {0x41, 0x50, 0x49, 0x4E, 0x53}; // APGPS
 
     uint32_t last_ins_pkt;
     uint32_t last_gps_pkt;
@@ -74,7 +83,7 @@ private:
 
     // A AnelloEVK packet can be a maximum of 261 bytes
     struct AnelloEVK_Packet {
-        uint8_t header[4];
+        uint8_t header[5];
         uint8_t payload[255];
         uint8_t checksum[2];
     };
@@ -83,6 +92,7 @@ private:
         AnelloEVK_Packet packet;
         ParseState state;
         uint8_t index;
+        NumPacketMembers num_values;
     } message_in;
 
     struct {
