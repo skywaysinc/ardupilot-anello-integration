@@ -29,15 +29,6 @@
 
 #include <string>
 
-enum class DescriptorSet {
-    BaseCommand = 0x01,
-    DMCommand = 0x0C,
-    SystemCommand = 0x7F,
-    IMUData = 0x80,
-    GNSSData = 0x81,
-    EstimationData = 0x82
-};
-
 enum class INSPacketField {
     ACCEL = 0x04,
     GYRO = 0x05,
@@ -165,7 +156,7 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                 } else {
                     //If we got the "CR", check the checksums.
                     if(valid_packet(message_in)) {
-                        //TODO: handle_packet(message_in);
+                        handle_packet(message_in);
                     }
                     // Now that we got the end of the packet, and have handled the message if it needs handling,
                     // go back to waiting for data.
@@ -223,21 +214,19 @@ bool AP_ExternalAHRS_AnelloEVK::valid_packet(const Msg &msg) const
 // Calls the correct functions based on the packet descriptor of the packet
 void AP_ExternalAHRS_AnelloEVK::handle_packet(const Msg &packet)
 {
-    switch ((DescriptorSet) packet.header[2]) {
-    case DescriptorSet::IMUData:
+    switch (packet.msg_type) {
+    case PacketType::IMU:
         handle_imu(packet);
         post_imu();
         break;
-    case DescriptorSet::GNSSData:
+    case PacketType::GPS:
         handle_gnss(packet);
         break;
-    case DescriptorSet::EstimationData:
+    case PacketType::INS:
         handle_filter(packet);
         post_filter();
         break;
-    case DescriptorSet::BaseCommand:
-    case DescriptorSet::DMCommand:
-    case DescriptorSet::SystemCommand:
+    case PacketType::UNKNOWN:
         break;
     }
 }
