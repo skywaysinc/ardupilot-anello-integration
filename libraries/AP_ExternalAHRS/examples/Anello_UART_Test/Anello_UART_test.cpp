@@ -29,7 +29,7 @@ const uint8_t END_DATA = 0x2A; // "*"
 const uint8_t PKT_IDENTIFIER = 0x23; // "#"
 
 /**
- * @brief Convience class enumerating states for a simple passing state machine.
+ * @brief Convience class enumerating states for a simple parsing state machine.
  *
  */
 enum class ParseState {
@@ -62,7 +62,7 @@ struct Msg {
 } message_in;
 
 
-// Decelerations of functions
+// Declarations of functions
 bool classify_msg(Msg &msg);
 bool validate_msg(const Msg &msg);
 static int16_t read_uart(AP_HAL::UARTDriver *uart, const char *name);
@@ -76,14 +76,14 @@ void setup();
  * @brief Determine if the message corresponds to one of the expected types.
  *
  * @param msg Msg struct that includes vector of bytes received over UART
- * @return true If the first 5 bytes match an expected header.
- * @return false If the first 5 bytes do not match expected header.
+ * @return true If the first 5 payload bytes match an expected header.
+ * @return false If the first 5 payload bytes do not match expected header.
  */
 bool classify_msg(Msg &msg) {
     // Pull out header section (5 bytes) from vector of received bytes.
     std::vector<uint8_t> msg_header = {msg.payload.begin(), msg.payload.begin()+5};
 
-    // Try to classify by compring to declared expected headers
+    // Try to classify by comparing received header to declared expected headers
     if (msg_header == IMU_HEADER) {
         msg.msg_type = PacketType::IMU;
         write_uart(hal.serial(0), "SERIAL0", "It's an imu\n");
@@ -218,7 +218,7 @@ void loop(void) {
             break;
 
         case ParseState::WaitingFor_MsgDescriptor:
-            // If we get a commas, then we are done receiving the message descriptor
+            // If we get a comma, then we are done receiving the message descriptor
             if (b == COMMA_DELIMITER) {
                 write_uart(hal.serial(0), "SERIAL0", "Got Msg Descriptor:");
                 if(!classify_msg(message_in)) {
@@ -230,7 +230,7 @@ void loop(void) {
                     message_in.state = ParseState::WaitingFor_Data;
                 }
             }
-            // Record data. The checksum runs ont he Message descriptor section also.
+            // Record data. The checksum runs over the message descriptor section also.
             message_in.payload.push_back(b);
             break;
 
@@ -240,19 +240,19 @@ void loop(void) {
             if (b != END_DATA) {
                 message_in.payload.push_back(b);
             } else {
-                // If we got the *, record the checksum to check for data integrity.
+                // If we got the "*"", record the checksum to check for data integrity.
                 write_uart(hal.serial(0), "SERIAL0", "Finished reading msg\n");
                 message_in.state = ParseState::WaitingFor_Checksum;
             }
             break;
 
         case ParseState::WaitingFor_Checksum:
-            // We are still waiting for checksum data if we have not seen the CR character.
+            // We are still waiting for checksum data if we have not seen the "CR" character.
             // Therefore still record data.
             if (b!= END_CHECKSUM) {
                 message_in.checksum.push_back(b);
             } else {
-                //If we got the CR, check if the checksums workout
+                //If we got the "CR", check the checksums.
                 write_uart(hal.serial(0), "SERIAL0", "Finished reading check sum\n");
                 if(validate_msg(message_in)) {
                     write_uart(hal.serial(0), "SERIAL0", "Valid msg\n");
@@ -260,7 +260,7 @@ void loop(void) {
                 } else {
                     write_uart(hal.serial(0), "SERIAL0", "Invalid msg\n");
                 };
-                // Now that we got the end, and have handled the message if it needs handling,
+                // Now that we got the end of the packet, and have handled the message if it needs handling,
                 // go back to waiting for data.
                 message_in.state = ParseState::WaitingFor_PktIdentifier;
                 message_in.payload.clear();
