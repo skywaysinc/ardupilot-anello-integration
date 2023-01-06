@@ -114,58 +114,66 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
     while (nbytes--> 0) {
         const int16_t b = uart->read();
 
+        // If the byte does not make sense, do nothing.
         if (b < 0) {
-            break;
+            return;
         }
-        switch (message_in.state) {
-        case ParseState::WaitingFor_PktIdentifier:
-            if (b == PKT_IDENTIFIER) {
-                message_in.state = ParseState::WaitingFor_MsgDescriptor;
-                message_in.index = 0;
-            }
-            break;
-        case ParseState::WaitingFor_MsgDescriptor:
-            if (b != COMMA_DELIMITER) {
-                message_in.packet.header[message_in.index++] = b;
-                break;
-            } else {
-                message_in.state = ParseState::WaitingFor_Data;
-                message_in.index = 0;
-                // Calculate how many commas we should look for
-                if (message_in.packet.header == IMU_HEADER) {
-                    message_in.num_values = NumPacketMembers::IMU;
-                    break;
-                } else if (message_in.packet.header == GPS_HEADER) {
-                    message_in.num_values = NumPacketMembers::GPS;
-                    break;
-                } else if (message_in.packet.header == INS_HEADER) {
-                    message_in.num_values = NumPacketMembers::INS;
-                    break;
-                } else {
-                    // not a valid message, go back to waiting for identifier
-                    message_in.state = ParseState::WaitingFor_PktIdentifier;
-                    message_in.index = 0;
-                    break;
-                }
-            }
-        case ParseState::WaitingFor_Data:
-            message_in.packet.payload[message_in.index++] = b;
-            if (message_in.index >= message_in.packet.header[3]) {
-                message_in.state = ParseState::WaitingFor_Checksum;
-                message_in.index = 0;
-            }
-            break;
-        case ParseState::WaitingFor_Checksum:
-            message_in.packet.checksum[message_in.index++] = b;
-            if (message_in.index >= 2) {
-                message_in.state = ParseState::WaitingFor_PktIdentifier;
-                message_in.index = 0;
 
-                if (valid_packet(message_in.packet)) {
-                    handle_packet(message_in.packet);
+        // Simple state machine for packet collection and parsing.
+        switch (message_in.state) {
+            case ParseState::WaitingFor_PktIdentifier:
+                if (b == PKT_IDENTIFIER) {
+                    // Start looking for what type of message we can expect
+                    message_in.state = ParseState::WaitingFor_MsgDescriptor;
+                    // Clear the container for the data of the message.
+                    message_in.payload.clear();
+                    message_in.checksum.clear();
                 }
-            }
-            break;
+                break;
+
+            case ParseState::WaitingFor_MsgDescriptor:
+                // If we get a comma, then we are done receiving the message descriptor
+                if (b == COMMA_DELIMITER) {
+                    if(!classify_packet(message_in)) {
+                        // not a valid message, go back to waiting for identifier
+                        message_in.state = ParseState::WaitingFor_PktIdentifier;
+                    } else {
+                        // Continue recording data now that we know it is one of the expected messages
+                        message_in.state = ParseState::WaitingFor_Data;
+                    }
+                }
+                // Record data. The checksum runs over the message descriptor section also.
+                message_in.payload.push_back(b);
+                break;
+
+            case ParseState::WaitingFor_Data:
+                // If we have not receive the ASCII character representing the end of data,
+                // continue recording data.
+                if (b != END_DATA) {
+                    message_in.payload.push_back(b);
+                } else {
+                    // If we got the "*"", record the checksum to check for data integrity.
+                    message_in.state = ParseState::WaitingFor_Checksum;
+                }
+                break;
+
+            case ParseState::WaitingFor_Checksum:
+                // We are still waiting for checksum data if we have not seen the "CR" character.
+                // Therefore still record data.
+                if (b!= END_CHECKSUM) {
+                    message_in.checksum.push_back(b);
+                } else {
+                    //If we got the "CR", check the checksums.
+                    if(valid_packet(message_in)) {
+                        //TODO: handle_packet(message_in);
+                    }
+                    // Now that we got the end of the packet, and have handled the message if it needs handling,
+                    // go back to waiting for data.
+                    message_in.state = ParseState::WaitingFor_PktIdentifier;
+                    message_in.payload.clear();
+                    message_in.checksum.clear();
+                }
+                break;
         }
     }
 }
@@ -305,7 +313,7 @@ void AP_ExternalAHRS_AnelloEVK::post_imu() const
             pressure_pa: imu_data.pressure,
             // setting temp to 25 effectively disables barometer temperature calibrations - these are already performed by AnelloEVK
             temperature: 25,
-        };        
+        };
         AP::baro().handle_external(baro);
     }
 }
