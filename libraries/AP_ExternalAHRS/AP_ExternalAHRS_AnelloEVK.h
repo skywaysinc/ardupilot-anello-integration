@@ -80,7 +80,7 @@ private:
         IMU,
         GPS,
         INS,
-        UNKOWN,
+        UNKNOWN,
     };
 
     struct Msg {
@@ -136,7 +136,7 @@ private:
         float speed_accuracy;
     } filter_data;
 
-
+    bool classify_packet(Msg &msg);
     bool valid_packet(const Msg &msg) const;
     double extract_double(const uint8_t* data, uint8_t offset) const;
     float extract_float(const uint8_t* data, uint8_t offset) const;

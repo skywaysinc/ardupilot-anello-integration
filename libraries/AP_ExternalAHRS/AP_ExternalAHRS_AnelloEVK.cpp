@@ -170,7 +170,27 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
     }
 }
 
-// returns true if the fletcher checksum for the packet is valid, else false.
+// returns true if the packet header bytes matches an expected message type.
+bool AP_ExternalAHRS_AnelloEVK::classify_packet(Msg &msg) {
+    // Pull out header section (5 bytes) from vector of received bytes.
+    std::vector<uint8_t> msg_header = {msg.payload.begin(), msg.payload.begin()+5};
+
+    // Try to classify by comparing received header to declared expected headers
+    if (msg_header == IMU_HEADER) {
+        msg.msg_type = PacketType::IMU;
+    } else if (msg_header == GPS_HEADER) {
+        msg.msg_type = PacketType::GPS;
+    } else if (msg_header == INS_HEADER) {
+        msg.msg_type = PacketType::INS;
+    } else {
+        // If not matches declare unknown and return false.
+        msg.msg_type = PacketType::UNKNOWN;
+        return false;
+    }
+    return true;
+}
+
+// returns true if the XOR checksum for the packet is valid, else false.
 bool AP_ExternalAHRS_AnelloEVK::valid_packet(const Msg &msg) const
 {
      // Convert checksum ASCII encoded bytes to characters
