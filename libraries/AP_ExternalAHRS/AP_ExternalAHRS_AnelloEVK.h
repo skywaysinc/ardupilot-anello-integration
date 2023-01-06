@@ -25,6 +25,7 @@
 #if HAL_EXTERNAL_AHRS_ANELLO_EVK_ENABLED
 
 #include <GCS_MAVLink/GCS_MAVLink.h>
+#include <vector>
 
 class AP_ExternalAHRS_AnelloEVK: public AP_ExternalAHRS_backend
 {
@@ -55,9 +56,9 @@ private:
     const uint8_t PKT_IDENTIFIER = 0x23; // "#"
 
     // ASCII Encoded Message Descriptors
-    const uint8_t IMU_HEADER[6] = {0x41, 0x50, 0x49, 0x4D, 0x55}; // APIMU
-    const uint8_t GPS_HEADER[6] = {0x41, 0x50, 0x47, 0x50, 0x53}; // APGPS
-    const uint8_t INS_HEADER[6] = {0x41, 0x50, 0x49, 0x4E, 0x53}; // APGPS
+    const std::vector<uint8_t> GPS_HEADER {0x41, 0x50, 0x47, 0x50, 0x53}; // "APGPS"
+    const std::vector<uint8_t> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x55}; // "APIMU"
+    const std::vector<uint8_t> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APGPS"
 
     AP_HAL::UARTDriver *uart;
     bool port_open = false;
@@ -75,27 +76,20 @@ private:
         WaitingFor_Checksum
     };
 
-    enum class NumPacketMembers {
-        IMU = 0x1B,
-        GPS = 0x10,
-        INS = 0x0D,
+    enum class PacketType {
+        IMU,
+        GPS,
+        INS,
+        UNKOWN,
     };
 
-    // A AnelloEVK packet can be a maximum of 261 bytes
-    struct AnelloEVK_Packet {
-        uint8_t header[5];
-        uint8_t payload[255];
-        uint8_t checksum[2];
-    };
-
-     struct Msg {
-        AnelloEVK_Packet packet;
+    struct Msg {
+        PacketType msg_type;
         ParseState state;
-        uint8_t index;
-        NumPacketMembers num_values;
+        std::vector<uint8_t> payload;
+        std::vector<uint8_t> checksum;
     } message_in;
 
-   
     struct {
         Vector3f accel;
         Vector3f gyro;
@@ -143,17 +137,16 @@ private:
     } filter_data;
 
 
-
-    bool valid_packet(const AnelloEVK_Packet &packet) const;
+    bool valid_packet(const Msg &msg) const;
     double extract_double(const uint8_t* data, uint8_t offset) const;
     float extract_float(const uint8_t* data, uint8_t offset) const;
     Quaternion populate_quaternion(const uint8_t* data, uint8_t offset) const;
     Vector3f populate_vector3f(const uint8_t* data, uint8_t offset) const;
     void build_packet();
-    void handle_filter(const AnelloEVK_Packet &packet);
-    void handle_gnss(const AnelloEVK_Packet &packet);
-    void handle_imu(const AnelloEVK_Packet &packet);
-    void handle_packet(const AnelloEVK_Packet &packet);
+    void handle_filter(const Msg &packet);
+    void handle_gnss(const Msg &packet);
+    void handle_imu(const Msg &packet);
+    void handle_packet(const Msg &packet);
     void post_filter() const;
     void post_gnss() const;
     void post_imu() const;
