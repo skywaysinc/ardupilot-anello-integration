@@ -221,7 +221,7 @@ bool AP_ExternalAHRS_AnelloEVK::valid_packet(const Msg &msg) const
 }
 
 // Calls the correct functions based on the packet descriptor of the packet
-void AP_ExternalAHRS_AnelloEVK::handle_packet(const AnelloEVK_Packet& packet)
+void AP_ExternalAHRS_AnelloEVK::handle_packet(const Msg &packet)
 {
     switch ((DescriptorSet) packet.header[2]) {
     case DescriptorSet::IMUData:
@@ -243,7 +243,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_packet(const AnelloEVK_Packet& packet)
 }
 
 // Collects data from an imu packet into `imu_data`
-void AP_ExternalAHRS_AnelloEVK::handle_imu(const AnelloEVK_Packet& packet)
+void AP_ExternalAHRS_AnelloEVK::handle_imu(const Msg &packet)
 {
     last_ins_pkt = AP_HAL::millis();
 
@@ -319,7 +319,7 @@ void AP_ExternalAHRS_AnelloEVK::post_imu() const
 }
 
 // Collects data from a gnss packet into `gnss_data`
-void AP_ExternalAHRS_AnelloEVK::handle_gnss(const AnelloEVK_Packet &packet)
+void AP_ExternalAHRS_AnelloEVK::handle_gnss(const Msg &packet)
 {
     last_gps_pkt = AP_HAL::millis();
 
@@ -385,7 +385,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(const AnelloEVK_Packet &packet)
     }
 }
 
-void AP_ExternalAHRS_AnelloEVK::handle_filter(const AnelloEVK_Packet &packet)
+void AP_ExternalAHRS_AnelloEVK::handle_filter(const Msg &packet)
 {
     last_filter_pkt = AP_HAL::millis();
 
