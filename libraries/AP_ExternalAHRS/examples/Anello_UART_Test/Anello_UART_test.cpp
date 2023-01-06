@@ -1,6 +1,9 @@
 /*
-  Access and process UART data from Anello EVK wired to TELEM2
- */
+*  Access and process UART data from Anello EVK wired to TELEM2
+*
+*  Anello EVK data is currently ASCII encoding. See here for details:
+*  https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
+*/
 
 
 #include <AP_HAL/AP_HAL.h>
