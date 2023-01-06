@@ -27,6 +27,7 @@
 #include <AP_HAL/utility/sparse-endian.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
 
+#include <string>
 
 enum class DescriptorSet {
     BaseCommand = 0x01,
@@ -170,22 +171,25 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
 }
 
 // returns true if the fletcher checksum for the packet is valid, else false.
-bool AP_ExternalAHRS_AnelloEVK::valid_packet(const AnelloEVK_Packet & packet) const
+bool AP_ExternalAHRS_AnelloEVK::valid_packet(const Msg &msg) const
 {
-    uint8_t checksum_one = 0;
-    uint8_t checksum_two = 0;
+     // Convert checksum ASCII encoded bytes to characters
+    char char1 = char(msg.checksum[0]);
+    char char2 = char(msg.checksum[1]);
 
-    for (int i = 0; i < 4; i++) {
-        checksum_one += packet.header[i];
-        checksum_two += checksum_one;
+    // Combine characters in string so it can be changed into an intergers
+    std::string char3{char1,char2};
+    uint16_t crc_st = std::stoi(char3, 0, 16);
+
+    // Calculate the expected CRC
+    // Simple XOR, see:
+    // https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
+    uint16_t crc = 0;
+    for (auto i : msg.payload) {
+        crc ^= i;
     }
 
-    for (int i = 0; i < packet.header[3]; i++) {
-        checksum_one += packet.payload[i];
-        checksum_two += checksum_one;
-    }
-
-    return packet.checksum[0] == checksum_one && packet.checksum[1] == checksum_two;
+    return crc == crc_st;
 }
 
 // Calls the correct functions based on the packet descriptor of the packet
