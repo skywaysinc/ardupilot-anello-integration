@@ -252,7 +252,7 @@ void loop(void) {
             if (b!= END_CHECKSUM) {
                 message_in.checksum.push_back(b);
             } else {
-                //If we got the "CR", check the checksums.
+                // If we got the "CR", check the checksums.
                 write_uart(hal.serial(0), "SERIAL0", "Finished reading check sum\n");
                 if(validate_msg(message_in)) {
                     write_uart(hal.serial(0), "SERIAL0", "Valid msg\n");
