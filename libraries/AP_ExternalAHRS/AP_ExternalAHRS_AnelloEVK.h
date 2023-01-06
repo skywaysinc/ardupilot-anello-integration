@@ -48,6 +48,25 @@ public:
     };
 
 private:
+    // Useful ASCII encoded characters
+    const uint8_t COMMA_DELIMITER = 0x2C; // ","
+    const uint8_t END_CHECKSUM = 0x0D; // "CR"
+    const uint8_t END_DATA = 0x2A; // "*"
+    const uint8_t PKT_IDENTIFIER = 0x23; // "#"
+
+    // ASCII Encoded Message Descriptors
+    const uint8_t IMU_HEADER[6] = {0x41, 0x50, 0x49, 0x4D, 0x55}; // APIMU
+    const uint8_t GPS_HEADER[6] = {0x41, 0x50, 0x47, 0x50, 0x53}; // APGPS
+    const uint8_t INS_HEADER[6] = {0x41, 0x50, 0x49, 0x4E, 0x53}; // APGPS
+
+    AP_HAL::UARTDriver *uart;
+    bool port_open = false;
+    HAL_Semaphore sem;
+    int8_t port_num;
+    uint32_t baudrate;
+    uint32_t last_filter_pkt;
+    uint32_t last_gps_pkt;
+    uint32_t last_ins_pkt;
 
     enum class ParseState {
         WaitingFor_PktIdentifier,
@@ -62,25 +81,6 @@ private:
         INS = 0x0D,
     };
 
-    void update_thread();
-
-    AP_HAL::UARTDriver *uart;
-    HAL_Semaphore sem;
-
-    uint32_t baudrate;
-    int8_t port_num;
-    bool port_open = false;
-
-    const uint8_t PKT_IDENTIFIER = 0x23; // #
-    const uint8_t COMMA_DELIMITER = 0x2C; // ,
-    uint8_t IMU_HEADER[6] = {0x41, 0x50, 0x49, 0x4D, 0x55}; // APIMU
-    uint8_t GPS_HEADER[6] = {0x41, 0x50, 0x47, 0x50, 0x53}; // APGPS
-    uint8_t INS_HEADER[6] = {0x41, 0x50, 0x49, 0x4E, 0x53}; // APGPS
-
-    uint32_t last_ins_pkt;
-    uint32_t last_gps_pkt;
-    uint32_t last_filter_pkt;
-
     // A AnelloEVK packet can be a maximum of 261 bytes
     struct AnelloEVK_Packet {
         uint8_t header[5];
@@ -88,13 +88,14 @@ private:
         uint8_t checksum[2];
     };
 
-    struct {
+     struct Msg {
         AnelloEVK_Packet packet;
         ParseState state;
         uint8_t index;
         NumPacketMembers num_values;
     } message_in;
 
+   
     struct {
         Vector3f accel;
         Vector3f gyro;
@@ -141,20 +142,22 @@ private:
         float speed_accuracy;
     } filter_data;
 
-    void build_packet();
-    bool valid_packet(const AnelloEVK_Packet &packet) const;
-    void handle_packet(const AnelloEVK_Packet &packet);
-    void handle_imu(const AnelloEVK_Packet &packet);
-    void handle_gnss(const AnelloEVK_Packet &packet);
-    void handle_filter(const AnelloEVK_Packet &packet);
-    void post_imu() const;
-    void post_gnss() const;
-    void post_filter() const;
 
-    Vector3f populate_vector3f(const uint8_t* data, uint8_t offset) const;
-    Quaternion populate_quaternion(const uint8_t* data, uint8_t offset) const;
-    float extract_float(const uint8_t* data, uint8_t offset) const;
+
+    bool valid_packet(const AnelloEVK_Packet &packet) const;
     double extract_double(const uint8_t* data, uint8_t offset) const;
+    float extract_float(const uint8_t* data, uint8_t offset) const;
+    Quaternion populate_quaternion(const uint8_t* data, uint8_t offset) const;
+    Vector3f populate_vector3f(const uint8_t* data, uint8_t offset) const;
+    void build_packet();
+    void handle_filter(const AnelloEVK_Packet &packet);
+    void handle_gnss(const AnelloEVK_Packet &packet);
+    void handle_imu(const AnelloEVK_Packet &packet);
+    void handle_packet(const AnelloEVK_Packet &packet);
+    void post_filter() const;
+    void post_gnss() const;
+    void post_imu() const;
+    void update_thread();
 
 };
 
