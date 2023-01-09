@@ -18,15 +18,15 @@
 const AP_HAL::HAL& hal = AP_HAL::get_HAL();
 
 // ASCII Encoded Message Descriptors
-const std::vector<uint8_t> GPS_HEADER {0x41, 0x50, 0x47, 0x50, 0x53}; // "APGPS"
-const std::vector<uint8_t> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x55}; // "APIMU"
-const std::vector<uint8_t> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APGPS"
+const std::vector<char> GPS_HEADER {0x41, 0x50, 0x47, 0x50, 0x53}; // "APGPS"
+const std::vector<char> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x55}; // "APIMU"
+const std::vector<char> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APGPS"
 
 // Useful ASCII encoded characters
-const uint8_t COMMA_DELIMITER = 0x2C; // ","
-const uint8_t END_CHECKSUM = 0x0D; // "CR"
-const uint8_t END_DATA = 0x2A; // "*"
-const uint8_t PKT_IDENTIFIER = 0x23; // "#"
+const char COMMA_DELIMITER = 0x2C; // ","
+const char END_CHECKSUM = 0x0D; // "CR"
+const char END_DATA = 0x2A; // "*"
+const char PKT_IDENTIFIER = 0x23; // "#"
 
 /**
  * @brief Convience class enumerating states for a simple parsing state machine.
@@ -57,18 +57,17 @@ enum class PacketType {
 struct Msg {
     PacketType msg_type;
     ParseState state;
-    std::vector<uint8_t> payload;
-    std::vector<uint8_t> checksum;
+    std::vector<char> payload;
+    std::vector<char> checksum;
 } message_in;
 
 
 // Declarations of functions
 bool classify_msg(Msg &msg);
 bool validate_msg(const Msg &msg);
-static int16_t read_uart(AP_HAL::UARTDriver *uart, const char *name);
+char read_uart(AP_HAL::UARTDriver *uart, const char *name);
 static void setup_uart(AP_HAL::UARTDriver *uart, const char *name);
 static void write_uart(AP_HAL::UARTDriver *uart, const char *name, const char *s);
-static void write_uart(AP_HAL::UARTDriver *uart, const char *name, const int16_t *b);
 void loop();
 void setup();
 
@@ -81,7 +80,7 @@ void setup();
  */
 bool classify_msg(Msg &msg) {
     // Pull out header section (5 bytes) from vector of received bytes.
-    std::vector<uint8_t> msg_header = {msg.payload.begin(), msg.payload.begin()+5};
+    std::vector<char> msg_header = {msg.payload.begin(), msg.payload.begin()+5};
 
     // Try to classify by comparing received header to declared expected headers
     if (msg_header == IMU_HEADER) {
@@ -109,13 +108,8 @@ bool classify_msg(Msg &msg) {
  * @return false If the received checksum does not match the calculated checksum
  */
 bool validate_msg(const Msg &msg) {
-    // Convert checksum ASCII encoded bytes to characters
-    char char1 = char(msg.checksum[0]);
-    char char2 = char(msg.checksum[1]);
 
-    // Combine characters in string so it can be changed into an intergers
-    std::string char3{char1,char2};
-    uint16_t crc_st = std::stoi(char3, 0, 16);
+    uint16_t crc_st = std::stoi(std::string{msg.checksum[0],msg.checksum[1]}, 0, 16);
 
     // Calculate the expected CRC
     // Simple XOR, see:
@@ -133,16 +127,16 @@ bool validate_msg(const Msg &msg) {
  *
  * @param uart Pointer to the UART driver
  * @param name Pointer to the name fo the UART.
- * @return int16_t The byte of data read from UART.
+ * @return char The byte of data read from UART.
  */
-static int16_t read_uart(AP_HAL::UARTDriver *uart, const char *name) {
+char read_uart(AP_HAL::UARTDriver *uart, const char *name) {
     if (uart == nullptr) {
         // that UART doesn't exist on this platform
         return 0;
     }
 
     // Read one byte of data on from UART.
-    int16_t b = uart->read();
+    char b = uart->read();
     return b;
 }
 
@@ -158,21 +152,6 @@ static void setup_uart(AP_HAL::UARTDriver *uart, const char *name) {
         return;
     }
     uart->begin(921600);
-}
-
-/**
- * @brief Print helpful message of the value of the received byte.
- *
- * @param uart Pointer to UART instance to send string.
- * @param name Pointer to name of the UART.
- * @param b Pointer to byte to write.
- */
-static void write_uart(AP_HAL::UARTDriver *uart, const char *name, const int16_t *b) {
-    if (uart == nullptr) {
-        // that UART doesn't exist on this platform
-        return;
-    }
-    uart->printf("Read byte is: %i \n", *b);
 }
 
 /**
@@ -192,10 +171,10 @@ static void write_uart(AP_HAL::UARTDriver *uart, const char *name, const char *s
 
 void loop(void) {
     // Read byte from Telem 2.
-    static int16_t b;
+    static char b;
     b = read_uart(hal.serial(2), "SERIAL2");
 
-    // Ouput contents to console for debugging.
+    // Ouput contents to console for debint16_tugging.
     write_uart(hal.serial(0), "SERIAL0", &b);
 
     // If the byte does not make sense, do nothing.
