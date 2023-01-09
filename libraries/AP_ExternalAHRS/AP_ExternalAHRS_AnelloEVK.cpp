@@ -29,12 +29,18 @@
 
 #include <string>
 
-enum class INSPacketField {
-    ACCEL = 0x04,
-    GYRO = 0x05,
-    QUAT = 0x0A,
-    MAG = 0x06,
-    PRESSURE = 0x17
+enum class IMUPacketField {
+    TIME_ms,
+    ACCEL_X_g,
+    ACCEL_Y_g,
+    ACCEL_Z_g,
+    GYRO_X_dps,
+    GYRO_Y_dps,
+    GYRO_Z_dps,
+    OPT_GYRO_Z_dps,
+    ODOM_mps,
+    ODOM_TIME_ms,
+    TEMP_degC,
 };
 
 enum class GNSSPacketField {
@@ -216,7 +222,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_packet(const Msg &packet)
 {
     switch (packet.msg_type) {
     case PacketType::IMU:
-        handle_imu(packet);
+        handle_imu(packet.payload);
         post_imu();
         break;
     case PacketType::GPS:
@@ -231,37 +237,71 @@ void AP_ExternalAHRS_AnelloEVK::handle_packet(const Msg &packet)
     }
 }
 
-// Collects data from an imu packet into `imu_data`
-void AP_ExternalAHRS_AnelloEVK::handle_imu(const Msg &packet)
-{
-    last_ins_pkt = AP_HAL::millis();
+// Parses the csv payload to a vector of floats.
+std::vector<double> parse_packet(const std::vector<uint8_t> &payload) {
 
+    std::string token;
+    std::vector<double> result;
+
+    for (int i = 0; i < payload.size(); i++) {
+        if (payload[i] == ',') {
+            result.push_back(std::stod(token));
+        } else {
+            token += payload[i];
+        }
+
+    }
+    return result;
+}
+
+// Collects data from an imu packet into `imu_data`
+void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<uint8_t> &payload) {
+
+    std::vector<double> parsed_data = parse_packet(payload);
+
+    last_ins_pkt = AP_HAL::millis();
     // Iterate through fields of varying lengths in INS packet
-    for (uint8_t i = 0; i < packet.header[3]; i +=  packet.payload[i]) {
-        switch ((INSPacketField) packet.payload[i+1]) {
-        // Scaled Ambient Pressure
-        case INSPacketField::PRESSURE: {
-            imu_data.pressure = extract_float(packet.payload, i+2) * 100; // Convert millibar to pascals
+    for (uint8_t i = 1; i < parsed_data.size(); i++) {
+        switch ((IMUPacketField) i) {
+        // Time Stamp - not implemented
+        case IMUPacketField::TIME_ms: {
             break;
         }
-        // Scaled Magnetometer Vector
-        case INSPacketField::MAG: {
-            imu_data.mag = populate_vector3f(packet.payload, i+2) * 1000; // Convert gauss to milligauss
+        case IMUPacketField::ACCEL_X_g: {
+            imu_data.accel[0] = parsed_data[i];
             break;
         }
-        // Scaled Accelerometer Vector
-        case INSPacketField::ACCEL: {
-            imu_data.accel = populate_vector3f(packet.payload, i+2) * GRAVITY_MSS; // Convert g's to m/s^2
+        case IMUPacketField::ACCEL_Y_g: {
+            imu_data.accel[1] = parsed_data[i];
             break;
         }
-        // Scaled Gyro Vector
-        case INSPacketField::GYRO: {
-            imu_data.gyro = populate_vector3f(packet.payload, i+2);
+        case IMUPacketField::ACCEL_Z_g: {
+            imu_data.accel[2] = parsed_data[i];
             break;
         }
-        // Quaternion
-        case INSPacketField::QUAT: {
-            imu_data.quat = populate_quaternion(packet.payload, i+2);
+        case IMUPacketField::GYRO_X_dps: {
+            imu_data.gyro[0] = parsed_data[i];
+            break;
+        }
+        case IMUPacketField::GYRO_Y_dps: {
+            imu_data.gyro[1] = parsed_data[i];
+            break;
+        }
+        case IMUPacketField::GYRO_Z_dps: {
+            break;
+        }
+        case IMUPacketField::OPT_GYRO_Z_dps: {
+            imu_data.gyro[3] = parsed_data[i];
+            break;
+        }
+        case IMUPacketField::ODOM_mps: {
+            break;
+        }
+        case IMUPacketField::ODOM_TIME_ms: {
+            break;
+        }
+        case IMUPacketField::TEMP_degC: {
+            imu_data.temperature = parsed_data[i];
             break;
         }
         }
@@ -276,34 +316,16 @@ void AP_ExternalAHRS_AnelloEVK::post_imu() const
         state.accel = imu_data.accel;
         state.gyro = imu_data.gyro;
 
-        state.quat = imu_data.quat;
-        state.have_quaternion = true;
+        state.have_quaternion = false;
     }
 
     {
         AP_ExternalAHRS::ins_data_message_t ins {
             accel: imu_data.accel,
             gyro: imu_data.gyro,
-            temperature: -300
+            temperature: imu_data.temperature,
         };
         AP::ins().handle_external(ins);
-    }
-
-    {
-        AP_ExternalAHRS::mag_data_message_t mag {
-            field: imu_data.mag
-        };
-        AP::compass().handle_external(mag);
-    }
-
-    {
-        const AP_ExternalAHRS::baro_data_message_t baro {
-            instance: 0,
-            pressure_pa: imu_data.pressure,
-            // setting temp to 25 effectively disables barometer temperature calibrations - these are already performed by AnelloEVK
-            temperature: 25,
-        };
-        AP::baro().handle_external(baro);
     }
 }
 
@@ -601,4 +623,3 @@ double AP_ExternalAHRS_AnelloEVK::extract_double(const uint8_t *data, uint8_t of
 }
 
 #endif // HAL_EXTERNAL_AHRS_ENABLED
-
