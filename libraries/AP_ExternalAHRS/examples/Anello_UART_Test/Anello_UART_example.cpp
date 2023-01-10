@@ -8,8 +8,8 @@
 
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Common/AP_Common.h>
-#include <string>
 #include <AP_Math/AP_Math.h>
+#include <string>
 
 
 
@@ -115,17 +115,17 @@ bool classify_msg(Msg &msg) {
  */
 bool validate_msg(const Msg &msg) {
 
-    uint16_t crc_st = std::stoi(std::string{msg.checksum[0],msg.checksum[1]}, 0, 16);
+    uint8_t checksum = 16 * char_to_hex(msg.checksum[0]) + char_to_hex(msg.checksum[1]);
 
     // Calculate the expected CRC
     // Simple XOR, see:
     // https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
-    uint16_t crc = 0;
+    uint8_t crc = 0;
     for (auto i : msg.payload) {
         crc ^= i;
     }
 
-    return crc == crc_st;
+    return crc == checksum;
 }
 
 /**
@@ -200,19 +200,21 @@ void write_uart(AP_HAL::UARTDriver *uart, const char *name, const Vector3f &vec)
  * @return std::vector<float> A vector of floats converted from UART message
  */
 std::vector<float> parse_msg(const std::vector<char> &msg) {
+
     write_uart(hal.serial(0), "SERIAL0", "Parsing values\n");
-    std::string token;
+    std::string field;
     std::vector<float> parsed_values;
 
     for (int i=0; i <= msg.size(); i++) {
         if (msg[i] == COMMA_DELIMITER || i == msg.size()) {
-            write_uart(hal.serial(0), "SERIAL0", token.c_str());
+            write_uart(hal.serial(0), "SERIAL0", field.c_str());
             write_uart(hal.serial(0), "SERIAL0", "\n");
 
-            parsed_values.push_back(atof(token.c_str()));
-            token.clear();
+            parsed_values.push_back(atof(field.c_str()));
+            field.clear();
+
         } else {
-            token += msg[i];
+            field += msg[i];
         }
     }
     return parsed_values;
