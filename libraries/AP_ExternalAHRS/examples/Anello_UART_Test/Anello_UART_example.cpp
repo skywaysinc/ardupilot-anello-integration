@@ -7,9 +7,11 @@
 
 
 #include <AP_HAL/AP_HAL.h>
-#include <array>
-#include <vector>
+#include <AP_Common/AP_Common.h>
 #include <string>
+#include <AP_Math/AP_Math.h>
+
+
 
 #if HAL_OS_POSIX_IO
 #include <stdio.h>
@@ -68,8 +70,12 @@ bool validate_msg(const Msg &msg);
 char read_uart(AP_HAL::UARTDriver *uart, const char *name);
 static void setup_uart(AP_HAL::UARTDriver *uart, const char *name);
 static void write_uart(AP_HAL::UARTDriver *uart, const char *name, const char *s);
+std::vector<float> parse_msg (const std::vector<char> &msg);
+void handle_imu(const std::vector<float> &msg);
+void handle_msg(const Msg &msg);
 void loop();
 void setup();
+void write_uart(AP_HAL::UARTDriver *uart, const char *name, const Vector3f &vec);
 
 /**
  * @brief Determine if the message corresponds to one of the expected types.
@@ -159,7 +165,7 @@ static void setup_uart(AP_HAL::UARTDriver *uart, const char *name) {
  *
  * @param uart Pointer to UART instance to send string.
  * @param name Pointer to name of the UART.
- * @param s Pointer to string of bytes to write.
+ * @param s Pointer to string of bytes to send over UART.
  */
 static void write_uart(AP_HAL::UARTDriver *uart, const char *name, const char *s) {
     if (uart == nullptr) {
@@ -167,6 +173,92 @@ static void write_uart(AP_HAL::UARTDriver *uart, const char *name, const char *s
         return;
     }
     uart->print(s);
+}
+
+/**
+ * @brief Send an encoded vector of floats over UART.
+ *
+ * @param uart Pointer to UART instance to send data over.
+ * @param name Pointer to name of the UART.
+ * @param vec Reference to vector of 3 floats to send over UART.
+ */
+void write_uart(AP_HAL::UARTDriver *uart, const char *name, const Vector3f &vec) {
+    if (uart == nullptr) {
+        // that UART doesn't exist on this platform
+        return;
+    }
+
+    for (int i = 0; i <= vec.length(); i++) {
+            uart->printf("vec[%i]: %f", i,vec[i]);
+    }
+}
+
+/**
+ * @brief Take vector of char values read from UART and turn them into appropriate float values.
+ *
+ * @param msg The vector of characters transmitted over UART
+ * @return std::vector<float> A vector of floats converted from UART message
+ */
+std::vector<float> parse_msg(const std::vector<char> &msg) {
+    write_uart(hal.serial(0), "SERIAL0", "Parsing values\n");
+    std::string token;
+    std::vector<float> parsed_values;
+
+    for (int i=0; i <= msg.size(); i++) {
+        if (msg[i] == COMMA_DELIMITER || i == msg.size()) {
+            write_uart(hal.serial(0), "SERIAL0", token.c_str());
+            write_uart(hal.serial(0), "SERIAL0", "\n");
+
+            parsed_values.push_back(atof(token.c_str()));
+            token.clear();
+        } else {
+            token += msg[i];
+        }
+    }
+    return parsed_values;
+}
+
+/**
+ * @brief Takes a vector of imu values creates a Vector3f forwarding to AP's imu field.
+ *
+ * @param imu_msg the vector of floats containing imu values.
+ */
+void handle_imu(const std::vector<float> &imu_msg) {
+    auto accel = Vector3f{imu_msg[2], imu_msg[3], imu_msg[4]};
+    auto gyro = Vector3f{imu_msg[5], imu_msg[6], imu_msg[8]};
+
+    write_uart(hal.serial(0), "SERIAL0", "handled imu msg:\n");
+    write_uart(hal.serial(0), "SERIAL0", accel);
+    write_uart(hal.serial(0), "SERIAL0", gyro);
+
+}
+
+/**
+ * @brief Parses the message received over UART based on what type of message.
+ *
+ * @param msg The message received over UART.
+ */
+void handle_msg(const Msg &msg) {
+
+    std::vector<float> parsed_values = parse_msg(msg.payload);
+    write_uart(hal.serial(0), "SERIAL0", "Parsed values\n");
+
+
+    switch (msg.msg_type) {
+        case PacketType::IMU:
+            handle_imu(parsed_values);
+            //post_imu();
+            break;
+        case PacketType::GPS:
+            //handle_gnss(packet);
+            break;
+        case PacketType::INS:
+            //handle_filter(packet);
+            //post_filter();
+            break;
+        case PacketType::UNKNOWN:
+            break;
+    }
 }
 
 void loop(void) {
@@ -220,7 +312,7 @@ void loop(void) {
                 message_in.payload.push_back(b);
             } else {
                 // If we got the "*"", record the checksum to check for data integrity.
-                write_uart(hal.serial(0), "SERIAL0", "Finished reading msg\n");
+                write_uart(hal.serial(0), "SERIAL0", " Finished reading msg\n");
                 message_in.state = ParseState::WaitingFor_Checksum;
             }
             break;
@@ -232,10 +324,10 @@ void loop(void) {
                 message_in.checksum.push_back(b);
             } else {
                 // If we got the "CR", check the checksums.
-                write_uart(hal.serial(0), "SERIAL0", "Finished reading check sum\n");
+                write_uart(hal.serial(0), "SERIAL0", " Finished reading check sum\n");
                 if(validate_msg(message_in)) {
                     write_uart(hal.serial(0), "SERIAL0", "Valid msg\n");
-                    //TODO: handle_packet(message_in);
+                    handle_msg(message_in);
                 } else {
                     write_uart(hal.serial(0), "SERIAL0", "Invalid msg\n");
                 };
