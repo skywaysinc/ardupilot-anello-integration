@@ -133,15 +133,14 @@ private:
     double extract_double(const uint8_t* data, uint8_t offset) const;
     float extract_float(const uint8_t* data, uint8_t offset) const;
     Quaternion populate_quaternion(const uint8_t* data, uint8_t offset) const;
-    std::vector<double> parse_packet(const std::vector<uint8_t> &payload) const;
+    std::vector<float> parse_packet(const std::vector<uint8_t> &payload) const;
     Vector3f populate_vector3f(const uint8_t* data, uint8_t offset) const;
     void build_packet();
-    void handle_filter(const Msg &packet);
-    void handle_gnss(const Msg &packet);
-    void handle_imu(const std::vector<uint8_t> &packet);
+    void handle_filter(const std::vector<float> &payload);
+    void handle_gnss(const std::vector<float> &payload);
+    void handle_imu(const std::vector<float> &packet);
     void handle_packet(const Msg &packet);
     void post_filter() const;
-    void post_gnss() const;
     void post_imu() const;
     void update_thread();
 

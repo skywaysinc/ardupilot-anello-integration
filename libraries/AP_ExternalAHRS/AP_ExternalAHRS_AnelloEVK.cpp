@@ -52,11 +52,11 @@ enum class GNSSPacketField {
 };
 
 enum class GNSSFixType {
-    FIX_3D = 0x00,
-    FIX_2D = 0x01,
-    TIME_ONLY = 0x02,
-    NONE = 0x03,
-    INVALID = 0x04
+    TYPE_3D_FIX = 3,
+    TYPE_2D_FIX = 2,
+    TIME_ONLY = 5,
+    NONE = 0,
+    INVALID = 4
 };
 
 enum class FilterPacketField {
@@ -198,38 +198,33 @@ bool AP_ExternalAHRS_AnelloEVK::classify_packet(Msg &msg) {
 // returns true if the XOR checksum for the packet is valid, else false.
 bool AP_ExternalAHRS_AnelloEVK::valid_packet(const Msg &msg) const
 {
-     // Convert checksum ASCII encoded bytes to characters
-    char char1 = char(msg.checksum[0]);
-    char char2 = char(msg.checksum[1]);
-
-    // Combine characters in string so it can be changed into an intergers
-    std::string char3{char1,char2};
-    uint16_t crc_st = std::stoi(char3, 0, 16);
+    uint8_t checksum = 16 * char_to_hex(msg.checksum[0]) + char_to_hex(msg.checksum[1]);
 
     // Calculate the expected CRC
     // Simple XOR, see:
     // https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
-    uint16_t crc = 0;
+    uint8_t crc = 0;
     for (auto i : msg.payload) {
         crc ^= i;
     }
 
-    return crc == crc_st;
+    return crc == checksum;
 }
 
 // Calls the correct functions based on the packet descriptor of the packet
-void AP_ExternalAHRS_AnelloEVK::handle_packet(const Msg &packet)
-{
+void AP_ExternalAHRS_AnelloEVK::handle_packet(const Msg &packet) {
+
+    std::vector<float> parsed_values = parse_packet(packet.payload);
+
     switch (packet.msg_type) {
     case PacketType::IMU:
-        handle_imu(packet.payload);
-        post_imu();
+        handle_imu(parsed_values);
         break;
     case PacketType::GPS:
-        handle_gnss(packet);
+        handle_gnss(parsed_values);
         break;
     case PacketType::INS:
-        handle_filter(packet);
+        handle_filter(parsed_values);
         post_filter();
         break;
     case PacketType::UNKNOWN:
@@ -238,14 +233,14 @@ void AP_ExternalAHRS_AnelloEVK::handle_packet(const Msg &packet)
 }
 
 // Parses the csv payload to a vector of floats.
-std::vector<double> AP_ExternalAHRS_AnelloEVK::parse_packet(const std::vector<uint8_t> &payload) const {
+std::vector<float> AP_ExternalAHRS_AnelloEVK::parse_packet(const std::vector<uint8_t> &payload) const {
 
     std::string token;
-    std::vector<double> result;
+    std::vector<float> result;
 
     for (int i = 0; i < payload.size(); i++) {
         if (payload[i] == COMMA_DELIMITER) {
-            result.push_back(std::stod(token));
+            result.push_back(atof(token.c_str()));
             token.clear();
         } else {
             token += payload[i];
@@ -256,15 +251,14 @@ std::vector<double> AP_ExternalAHRS_AnelloEVK::parse_packet(const std::vector<ui
 }
 
 // Collects data from an imu packet into `imu_data`
-void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<uint8_t> &payload) {
+void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<float> &payload) {
 
-    std::vector<double> parsed_data = parse_packet(payload);
 
     last_ins_pkt = AP_HAL::millis();
     {
         WITH_SEMAPHORE(state.sem);
-        state.accel = Vector3f{parsed_data[2], parsed_data[3], parsed_data[4]};
-        state.gyro = Vector3f{parsed_data[5], parsed_data[6], parsed_data[8]}; // use FOG gyro for z
+        state.accel = Vector3f{payload[2], payload[3], payload[4]};
+        state.gyro = Vector3f{payload[5], payload[6], payload[8]}; // use FOG gyro for z
         state.have_quaternion = false;
     }
 
@@ -272,116 +266,67 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<uint8_t> &payload) 
         AP_ExternalAHRS::ins_data_message_t ins {
             accel: state.accel,
             gyro: state.gyro,
-            temperature: parsed_data[11],
+            temperature: payload[11],
         };
         AP::ins().handle_external(ins);
     }
 }
 
 // Collects data from a gnss packet into `gnss_data`
-void AP_ExternalAHRS_AnelloEVK::handle_gnss(const Msg &packet)
+void AP_ExternalAHRS_AnelloEVK::handle_gnss(const std::vector<float> &payload)
 {
-    std::vector<double> parsed_data = parse_packet(payload);
     last_gps_pkt = AP_HAL::millis();
 
-    // Iterate through fields of varying lengths in GNSS packet
-    for (uint8_t i = 0; i < packet.payload[3]; i += packet.payload[i]) {
-        switch ((GNSSPacketField) packet.payload[i+1]) {
-        // GPS Time
-        case GNSSPacketField::GPS_TIME: {
-            gnss_data.tow_ms = extract_double(packet.payload, i+2) * 1000; // Convert seconds to ms
-            gnss_data.week = be16toh_ptr(&packet.payload[i+10]);
-            break;
-        }
-        // GNSS Fix Information
-        case GNSSPacketField::FIX_INFO: {
-            switch ((GNSSFixType) packet.payload[i+2]) {
-            case (GNSSFixType::FIX_3D): {
-                gnss_data.fix_type = GPS_FIX_TYPE_3D_FIX;
-                break;
-            }
-            case (GNSSFixType::FIX_2D): {
-                gnss_data.fix_type = GPS_FIX_TYPE_2D_FIX;
-                break;
-            }
-            case (GNSSFixType::TIME_ONLY):
-            case (GNSSFixType::NONE): {
-                gnss_data.fix_type = GPS_FIX_TYPE_NO_FIX;
-                break;
-            }
-            default:
-            case (GNSSFixType::INVALID): {
-                gnss_data.fix_type = GPS_FIX_TYPE_NO_GPS;
-                break;
-            }
-            }
+    gnss_data.tow_ms = payload[2] / 1e6; // Convert seconds to ms
+    gnss_data.week = payload[2]/604800;
 
-            gnss_data.satellites = packet.payload[i+3];
+    switch ((GNSSFixType) payload[15]) {
+        case(GNSSFixType::TIME_ONLY):
+        case(GNSSFixType::NONE):
+        case(GNSSFixType::INVALID):
+            gnss_data.fix_type = GPS_FIX_TYPE_NO_FIX;
             break;
-        }
-        // LLH Position
-        case GNSSPacketField::LLH_POSITION: {
-            gnss_data.lat = extract_double(packet.payload, i+2) * 1.0e7; // Decimal degrees to degrees
-            gnss_data.lon = extract_double(packet.payload, i+10) * 1.0e7;
-            gnss_data.msl_altitude = extract_double(packet.payload, i+26) * 1.0e2; // Meters to cm
-            gnss_data.horizontal_position_accuracy = extract_float(packet.payload, i+34);
-            gnss_data.vertical_position_accuracy = extract_float(packet.payload, i+38);
+        case (GNSSFixType::TYPE_2D_FIX):
+            gnss_data.fix_type = GPS_FIX_TYPE_2D_FIX;
             break;
-        }
-        // DOP Data
-        case GNSSPacketField::DOP_DATA: {
-            gnss_data.hdop = extract_float(packet.payload, i+10);
-            gnss_data.vdop = extract_float(packet.payload, i+14);
+        case (GNSSFixType::TYPE_3D_FIX):
+            gnss_data.fix_type = GPS_FIX_TYPE_3D_FIX;
             break;
-        }
-        // NED Velocity
-        case GNSSPacketField::NED_VELOCITY: {
-            gnss_data.ned_velocity_north = extract_float(packet.payload, i+2);
-            gnss_data.ned_velocity_east = extract_float(packet.payload, i+6);
-            gnss_data.ned_velocity_down = extract_float(packet.payload, i+10);
-            gnss_data.speed_accuracy = extract_float(packet.payload, i+26);
-            break;
-        }
-        }
-    }
+    };
+
+        gnss_data.satellites = payload[13];
+
+        gnss_data.lon = payload[3];
+        gnss_data.lat = payload[4];
+        gnss_data.msl_altitude = payload[6];
+
+
+        gnss_data.horizontal_position_accuracy =  payload[9];
+        gnss_data.vertical_position_accuracy = payload[10];
+
+        gnss_data.speed_accuracy = payload[14];
 }
 
-void AP_ExternalAHRS_AnelloEVK::handle_filter(const Msg &packet)
+void AP_ExternalAHRS_AnelloEVK::handle_filter(const std::vector<float> &payload)
 {
     last_filter_pkt = AP_HAL::millis();
 
-    // Iterate through fields of varying lengths in filter packet
-    for (uint8_t i = 0; i < packet.header[3]; i += packet.payload[i]) {
-        switch ((FilterPacketField) packet.payload[i+1]) {
-        // GPS Timestamp
-        case FilterPacketField::GPS_TIME: {
-            filter_data.tow_ms = extract_double(packet.payload, i+2) * 1000; // Convert seconds to ms
-            filter_data.week = be16toh_ptr(&packet.payload[i+10]);
-            break;
-        }
-        // LLH Position
-        case FilterPacketField::LLH_POSITION: {
-            filter_data.lat = extract_double(packet.payload, i+2) * 1.0e7; // Decimal degrees to degrees
-            filter_data.lon = extract_double(packet.payload, i+10) * 1.0e7;
-            filter_data.hae_altitude = extract_double(packet.payload, i+26) * 1.0e2; // Meters to cm
-            break;
-        }
-        // NED Velocity
-        case FilterPacketField::NED_VELOCITY: {
-            filter_data.ned_velocity_north = extract_float(packet.payload, i+2);
-            filter_data.ned_velocity_east = extract_float(packet.payload, i+6);
-            filter_data.ned_velocity_down = extract_float(packet.payload, i+10);
-            break;
-        }
-        // Filter Status
-        case FilterPacketField::FILTER_STATUS: {
-            filter_status.state = be16toh_ptr(&packet.payload[i+2]);
-            filter_status.mode = be16toh_ptr(&packet.payload[i+4]);
-            filter_status.flags = be16toh_ptr(&packet.payload[i+6]);
-            break;
-        }
-        }
-    }
+    filter_data.tow_ms = payload[2] / 1e6; // Convert seconds to ms
+    filter_data.week = payload[2]/604800;
+
+    filter_data.lat = payload[4];
+    filter_data.lon = payload[5];
+    filter_data.hae_altitude = payload[6];
+
+    filter_data.ned_velocity_north = payload[7];
+    filter_data.ned_velocity_east = payload[8];
+    filter_data.ned_velocity_down = payload[9];
+
+    filter_status.state = payload[3];
+    filter_status.mode = payload[13];
+
+    gnss_data.hdop = payload [11];
+    gnss_data.hdop = payload [11];
 }
 
 void AP_ExternalAHRS_AnelloEVK::post_filter() const
