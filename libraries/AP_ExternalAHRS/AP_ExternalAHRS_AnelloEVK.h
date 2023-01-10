@@ -91,12 +91,6 @@ private:
     } message_in;
 
     struct {
-        Vector3f accel;
-        Vector3f gyro;
-        float temperature;
-    } imu_data;
-
-    struct {
         uint16_t week;
         uint32_t tow_ms;
         GPS_FIX_TYPE fix_type;

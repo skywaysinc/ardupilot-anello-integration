@@ -238,14 +238,15 @@ void AP_ExternalAHRS_AnelloEVK::handle_packet(const Msg &packet)
 }
 
 // Parses the csv payload to a vector of floats.
-std::vector<double> parse_packet(const std::vector<uint8_t> &payload) {
+std::vector<double> AP_ExternalAHRS_AnelloEVK::parse_packet(const std::vector<uint8_t> &payload) const {
 
     std::string token;
     std::vector<double> result;
 
     for (int i = 0; i < payload.size(); i++) {
-        if (payload[i] == ',') {
+        if (payload[i] == COMMA_DELIMITER) {
             result.push_back(std::stod(token));
+            token.clear();
         } else {
             token += payload[i];
         }
@@ -260,70 +261,18 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<uint8_t> &payload) 
     std::vector<double> parsed_data = parse_packet(payload);
 
     last_ins_pkt = AP_HAL::millis();
-    // Iterate through fields of varying lengths in INS packet
-    for (uint8_t i = 1; i < parsed_data.size(); i++) {
-        switch ((IMUPacketField) i) {
-        // Time Stamp - not implemented
-        case IMUPacketField::TIME_ms: {
-            break;
-        }
-        case IMUPacketField::ACCEL_X_g: {
-            imu_data.accel[0] = parsed_data[i];
-            break;
-        }
-        case IMUPacketField::ACCEL_Y_g: {
-            imu_data.accel[1] = parsed_data[i];
-            break;
-        }
-        case IMUPacketField::ACCEL_Z_g: {
-            imu_data.accel[2] = parsed_data[i];
-            break;
-        }
-        case IMUPacketField::GYRO_X_dps: {
-            imu_data.gyro[0] = parsed_data[i];
-            break;
-        }
-        case IMUPacketField::GYRO_Y_dps: {
-            imu_data.gyro[1] = parsed_data[i];
-            break;
-        }
-        case IMUPacketField::GYRO_Z_dps: {
-            break;
-        }
-        case IMUPacketField::OPT_GYRO_Z_dps: {
-            imu_data.gyro[3] = parsed_data[i];
-            break;
-        }
-        case IMUPacketField::ODOM_mps: {
-            break;
-        }
-        case IMUPacketField::ODOM_TIME_ms: {
-            break;
-        }
-        case IMUPacketField::TEMP_degC: {
-            imu_data.temperature = parsed_data[i];
-            break;
-        }
-        }
-    }
-}
-
-// Posts data from an imu packet to `state` and `handle_external` methods
-void AP_ExternalAHRS_AnelloEVK::post_imu() const
-{
     {
         WITH_SEMAPHORE(state.sem);
-        state.accel = imu_data.accel;
-        state.gyro = imu_data.gyro;
-
+        state.accel = Vector3f{parsed_data[2], parsed_data[3], parsed_data[4]};
+        state.gyro = Vector3f{parsed_data[5], parsed_data[6], parsed_data[8]}; // use FOG gyro for z
         state.have_quaternion = false;
     }
 
     {
         AP_ExternalAHRS::ins_data_message_t ins {
-            accel: imu_data.accel,
-            gyro: imu_data.gyro,
-            temperature: imu_data.temperature,
+            accel: state.accel,
+            gyro: state.gyro,
+            temperature: parsed_data[11],
         };
         AP::ins().handle_external(ins);
     }
@@ -332,10 +281,11 @@ void AP_ExternalAHRS_AnelloEVK::post_imu() const
 // Collects data from a gnss packet into `gnss_data`
 void AP_ExternalAHRS_AnelloEVK::handle_gnss(const Msg &packet)
 {
+    std::vector<double> parsed_data = parse_packet(payload);
     last_gps_pkt = AP_HAL::millis();
 
     // Iterate through fields of varying lengths in GNSS packet
-    for (uint8_t i = 0; i < packet.header[3]; i += packet.payload[i]) {
+    for (uint8_t i = 0; i < packet.payload[3]; i += packet.payload[i]) {
         switch ((GNSSPacketField) packet.payload[i+1]) {
         // GPS Time
         case GNSSPacketField::GPS_TIME: {
