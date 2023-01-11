@@ -11,7 +11,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 /*
-  support for Anello EVK serially connected AHRS Systems
+  Support for Anello EVK serially connected AHRS Systems
  */
 
 #include "AP_ExternalAHRS_AnelloEVK.h"
@@ -24,28 +24,6 @@
 #include <AP_Logger/AP_Logger.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
 #include <string>
-
-enum class IMUPacketField {
-    TIME_ms,
-    ACCEL_X_g,
-    ACCEL_Y_g,
-    ACCEL_Z_g,
-    GYRO_X_dps,
-    GYRO_Y_dps,
-    GYRO_Z_dps,
-    OPT_GYRO_Z_dps,
-    ODOM_mps,
-    ODOM_TIME_ms,
-    TEMP_degC,
-};
-
-enum class GNSSFixType {
-    TYPE_3D_FIX = 3,
-    TYPE_2D_FIX = 2,
-    TIME_ONLY = 5,
-    NONE = 0,
-    INVALID = 4
-};
 
 extern const AP_HAL::HAL &hal;
 

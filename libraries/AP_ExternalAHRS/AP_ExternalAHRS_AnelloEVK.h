@@ -83,6 +83,28 @@ private:
         UNKNOWN,
     };
 
+    enum class IMUPacketField {
+        TIME_ms,
+        ACCEL_X_g,
+        ACCEL_Y_g,
+        ACCEL_Z_g,
+        GYRO_X_dps,
+        GYRO_Y_dps,
+        GYRO_Z_dps,
+        OPT_GYRO_Z_dps,
+        ODOM_mps,
+        ODOM_TIME_ms,
+        TEMP_degC,
+    };
+
+    enum class GNSSFixType {
+        TYPE_3D_FIX = 3,
+        TYPE_2D_FIX = 2,
+        TIME_ONLY = 5,
+        NONE = 0,
+        INVALID = 4
+    };
+
     struct Msg {
         PacketType msg_type;
         ParseState state;
