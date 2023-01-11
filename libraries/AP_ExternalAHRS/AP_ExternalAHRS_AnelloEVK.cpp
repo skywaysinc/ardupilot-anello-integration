@@ -14,19 +14,15 @@
   support for Anello EVK serially connected AHRS Systems
  */
 
-#define ALLOW_DOUBLE_MATH_FUNCTIONS
-
 #include "AP_ExternalAHRS_AnelloEVK.h"
+
 #if HAL_EXTERNAL_AHRS_ANELLO_EVK_ENABLED
-#include <AP_Baro/AP_Baro.h>
-#include <AP_Compass/AP_Compass.h>
+
 #include <AP_GPS/AP_GPS.h>
 #include <AP_InertialSensor/AP_InertialSensor.h>
 #include <GCS_MAVLink/GCS.h>
 #include <AP_Logger/AP_Logger.h>
-#include <AP_HAL/utility/sparse-endian.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
-
 #include <string>
 
 enum class IMUPacketField {
@@ -43,27 +39,12 @@ enum class IMUPacketField {
     TEMP_degC,
 };
 
-enum class GNSSPacketField {
-    LLH_POSITION = 0x03,
-    NED_VELOCITY = 0x05,
-    DOP_DATA = 0x07,
-    GPS_TIME = 0x09,
-    FIX_INFO = 0x0B
-};
-
 enum class GNSSFixType {
     TYPE_3D_FIX = 3,
     TYPE_2D_FIX = 2,
     TIME_ONLY = 5,
     NONE = 0,
     INVALID = 4
-};
-
-enum class FilterPacketField {
-    FILTER_STATUS = 0x10,
-    GPS_TIME = 0x11,
-    LLH_POSITION = 0x01,
-    NED_VELOCITY = 0x02
 };
 
 extern const AP_HAL::HAL &hal;
@@ -257,8 +238,8 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<float> &payload) {
     last_ins_pkt = AP_HAL::millis();
     {
         WITH_SEMAPHORE(state.sem);
-        state.accel = Vector3f{payload[2], payload[3], payload[4]};
-        state.gyro = Vector3f{payload[5], payload[6], payload[8]}; // use FOG gyro for z
+        state.accel = Vector3f{payload[2], payload[3], payload[4]} * GRAVITY_MSS; // convert from g to m/s/s
+        state.gyro = Vector3f{payload[5], payload[6], payload[8]} * DEG_TO_RAD; // use FOG gyro for z and convert to rads/s
         state.have_quaternion = false;
     }
 
@@ -270,6 +251,27 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<float> &payload) {
         };
         AP::ins().handle_external(ins);
     }
+
+    // @LoggerMessage: EAH1
+    // @Description: External AHRS data
+    // @Field: TimeUS: Time since system startup
+    // @Field: AX: x acceleration
+    // @Field: AY: y acceleration
+    // @Field: AZ: z acceleration
+    // @Field: WX: x angular velocity
+    // @Field: WY: y angular velocity
+    // @Field: WZ: z angular velocity
+    // @Field: OG_WZ: z angular velocity measured by FOG
+    // @Field: ODO: Scaled Composite Odometer Value
+    // @Field: ODO_TIME: Timestamp of Odometer Reading
+    // @Field: T: Temperature
+    AP::logger().WriteStreaming("EAH1", "TimeUS,AX,AY,AZ,WX,WY,WZ,OG_WZ,ODO,ODO_TIME,T",
+                       "soooEEEEnsO", "C00000000C0",
+                       "Qffffffffff",
+                       AP_HAL::micros64(),
+                       payload[2]*GRAVITY_MSS,payload[3]*GRAVITY_MSS,payload[4]*GRAVITY_MSS,
+                       payload[5], payload[6], payload[7],payload[8],
+                       payload[9], payload[10], payload[11]);
 }
 
 // Collects data from a gnss packet into `gnss_data`
@@ -477,44 +479,11 @@ void AP_ExternalAHRS_AnelloEVK::send_status_report(mavlink_channel_t chan) const
     const float vel_gate = 4; // represents hz value data is posted at
     const float pos_gate = 4; // represents hz value data is posted at
     const float hgt_gate = 4; // represents hz value data is posted at
-    const float mag_var = 0; //we may need to change this to be like the other gates, set to 0 because mag is ignored by the ins filter in vectornav
+    const float mag_var = 0; //we may need to change this to be like the other gates, set to 0 because mag is ignored by the ins filter in anello
     mavlink_msg_ekf_status_report_send(chan, flags,
                                        gnss_data.speed_accuracy/vel_gate, gnss_data.horizontal_position_accuracy/pos_gate, gnss_data.vertical_position_accuracy/hgt_gate,
                                        mag_var, 0, 0);
 
-}
-
-Vector3f AP_ExternalAHRS_AnelloEVK::populate_vector3f(const uint8_t *data, uint8_t offset) const
-{
-    return Vector3f {
-        extract_float(data, offset),
-        extract_float(data, offset+4),
-        extract_float(data, offset+8)
-    };
-}
-
-Quaternion AP_ExternalAHRS_AnelloEVK::populate_quaternion(const uint8_t *data, uint8_t offset) const
-{
-    return Quaternion {
-        extract_float(data, offset),
-        extract_float(data, offset+4),
-        extract_float(data, offset+8),
-        extract_float(data, offset+12)
-    };
-}
-
-float AP_ExternalAHRS_AnelloEVK::extract_float(const uint8_t *data, uint8_t offset) const
-{
-    uint32_t tmp = be32toh_ptr(&data[offset]);
-
-    return *reinterpret_cast<float*>(&tmp);
-}
-
-double AP_ExternalAHRS_AnelloEVK::extract_double(const uint8_t *data, uint8_t offset) const
-{
-    uint64_t tmp = be64toh_ptr(&data[offset]);
-
-    return *reinterpret_cast<double*>(&tmp);
 }
 
 #endif // HAL_EXTERNAL_AHRS_ENABLED

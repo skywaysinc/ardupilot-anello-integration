@@ -130,11 +130,7 @@ private:
 
     bool classify_packet(Msg &msg);
     bool valid_packet(const Msg &msg) const;
-    double extract_double(const uint8_t* data, uint8_t offset) const;
-    float extract_float(const uint8_t* data, uint8_t offset) const;
-    Quaternion populate_quaternion(const uint8_t* data, uint8_t offset) const;
     std::vector<float> parse_packet(const std::vector<uint8_t> &payload) const;
-    Vector3f populate_vector3f(const uint8_t* data, uint8_t offset) const;
     void build_packet();
     void handle_filter(const std::vector<float> &payload);
     void handle_gnss(const std::vector<float> &payload);
@@ -147,4 +143,3 @@ private:
 };
 
 #endif // HAL_EXTERNAL_AHRS_ENABLED
-
