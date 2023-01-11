@@ -5,13 +5,10 @@
 *  https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
 */
 
-
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Common/AP_Common.h>
 #include <AP_Math/AP_Math.h>
 #include <string>
-
-
 
 #if HAL_OS_POSIX_IO
 #include <stdio.h>
@@ -22,8 +19,8 @@ const AP_HAL::HAL& hal = AP_HAL::get_HAL();
 // ASCII Encoded Message Descriptors
 const std::vector<char> GPS_HEADER {0x41, 0x50, 0x47, 0x50, 0x53}; // "APGPS"
 const std::vector<char> GP2_HEADER {0x41, 0x50, 0x47, 0x50, 0x32}; // "APGP2"
-const std::vector<char> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x32}; //0x55}; // "APIMU"
-const std::vector<char> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APGPS"
+const std::vector<char> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x55}; // "APIMU"
+const std::vector<char> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APINS"
 
 // Useful ASCII encoded characters
 const char COMMA_DELIMITER = 0x2C; // ","
@@ -92,13 +89,10 @@ bool classify_msg(Msg &msg) {
     // Try to classify by comparing received header to declared expected headers
     if (msg_header == IMU_HEADER) {
         msg.msg_type = PacketType::IMU;
-        write_uart(hal.serial(0), "SERIAL0", "It's an imu\n");
     } else if (msg_header == GPS_HEADER || msg_header == GP2_HEADER) {
         msg.msg_type = PacketType::GPS;
-        write_uart(hal.serial(0), "SERIAL0", "It's a GPS\n");
     } else if (msg_header == INS_HEADER) {
         msg.msg_type = PacketType::INS;
-        write_uart(hal.serial(0), "SERIAL0", "It's an ins\n");
     } else {
         // If not matches declare unknown and return false.
         msg.msg_type = PacketType::UNKNOWN;
@@ -194,6 +188,13 @@ void write_uart(AP_HAL::UARTDriver *uart, const char *name, const Vector3f &vec)
     }
 }
 
+/**
+ * @brief Send an encoded vector of floats over UART.
+ *
+ * @param uart Pointer to UART instance to send data over.
+ * @param name Pointer to name of the UART.
+ * @param val Reference to float to send over UART.
+ */
 void write_uart(AP_HAL::UARTDriver *uart, const char *name, const float &val) {
     if (uart == nullptr) {
         // that UART doesn't exist on this platform
@@ -212,7 +213,6 @@ void write_uart(AP_HAL::UARTDriver *uart, const char *name, const float &val) {
  */
 std::vector<float> parse_msg(const std::vector<char> &msg) {
 
-    write_uart(hal.serial(0), "SERIAL0", "Parsing values\n");
     std::string field;
     std::vector<float> parsed_values;
 
@@ -232,15 +232,8 @@ std::vector<float> parse_msg(const std::vector<char> &msg) {
 }
 
 void handle_gnss(const std::vector<float> &msg) {
-    //auto lat_long = Vector3f{(float) msg[3], (float) msg[4], (float) msg[5]};
-    // auto mls_speed_heading= Vector3f{msg[6], msg[7], msg[8]};
-    // auto fix_Satnum_RTK= Vector3f{msg[12], msg[13], msg[16]};
+    write_uart(hal.serial(0), "SERIAL0", "handled gnss msg\n");
 
-
-    write_uart(hal.serial(0), "SERIAL0", "handled gnss msg:\n");
-    write_uart(hal.serial(0), "SERIAL0", msg[3]);
-    // write_uart(hal.serial(0), "SERIAL0", mls_speed_heading);
-    // write_uart(hal.serial(0), "SERIAL0", fix_Satnum_RTK);
 }
 
 /**
@@ -249,13 +242,10 @@ void handle_gnss(const std::vector<float> &msg) {
  * @param imu_msg the vector of floats containing imu values.
  */
 void handle_imu(const std::vector<float> &imu_msg) {
-    auto accel = Vector3f{imu_msg[2], imu_msg[3], imu_msg[4]};
-    auto gyro = Vector3f{imu_msg[5], imu_msg[6], imu_msg[8]};
+    //auto accel = Vector3f{imu_msg[2], imu_msg[3], imu_msg[4]};
+    //auto gyro = Vector3f{imu_msg[5], imu_msg[6], imu_msg[8]};
 
-    write_uart(hal.serial(0), "SERIAL0", "handled imu msg:\n");
-    write_uart(hal.serial(0), "SERIAL0", accel);
-    write_uart(hal.serial(0), "SERIAL0", gyro);
-
+    write_uart(hal.serial(0), "SERIAL0", "handled imu msg\n");
 }
 
 /**
@@ -266,20 +256,17 @@ void handle_imu(const std::vector<float> &imu_msg) {
 void handle_msg(const Msg &msg) {
 
     std::vector<float> parsed_values = parse_msg(msg.payload);
-    write_uart(hal.serial(0), "SERIAL0", "Parsed values\n");
 
 
     switch (msg.msg_type) {
         case PacketType::IMU:
-            //handle_imu(parsed_values);
-            //post_imu();
+            handle_imu(parsed_values);
             break;
         case PacketType::GPS:
             handle_gnss(parsed_values);
             break;
         case PacketType::INS:
             //handle_filter(packet);
-            //post_filter();
             break;
         case PacketType::UNKNOWN:
             break;
@@ -291,20 +278,22 @@ void loop(void) {
     static char b;
     b = read_uart(hal.serial(2), "SERIAL2");
 
-    // Ouput contents to console for debint16_tugging.
-    write_uart(hal.serial(0), "SERIAL0", &b);
-
     // If the byte does not make sense, do nothing.
     if (b < 0) {
         return;
     }
 
+    if (b == PKT_IDENTIFIER) {
+        message_in.state = ParseState::WaitingFor_PktIdentifier;
+        message_in.payload.clear();
+        message_in.checksum.clear();
+    }
+
+
     // Simple state machine for packet collection and parsing.
     switch (message_in.state) {
         case ParseState::WaitingFor_PktIdentifier:
             if (b == PKT_IDENTIFIER) {
-                // Ouput contents to console for debugging.
-                write_uart(hal.serial(0), "SERIAL0", "Got Pkt identifier\n");
                 // Start looking for what type of message we can expect
                 message_in.state = ParseState::WaitingFor_MsgDescriptor;
                 // Clear the container for the data of the message.
@@ -316,7 +305,6 @@ void loop(void) {
         case ParseState::WaitingFor_MsgDescriptor:
             // If we get a comma, then we are done receiving the message descriptor
             if (b == COMMA_DELIMITER) {
-                write_uart(hal.serial(0), "SERIAL0", "Got Msg Descriptor:");
                 if(!classify_msg(message_in)) {
                     // not a valid message, go back to waiting for identifier
                     message_in.state = ParseState::WaitingFor_PktIdentifier;
@@ -336,8 +324,6 @@ void loop(void) {
             if (b != END_DATA) {
                 message_in.payload.push_back(b);
             } else {
-                // If we got the "*"", record the checksum to check for data integrity.
-                write_uart(hal.serial(0), "SERIAL0", " Finished reading msg\n");
                 message_in.state = ParseState::WaitingFor_Checksum;
             }
             break;
@@ -348,8 +334,7 @@ void loop(void) {
             if (b!= END_CHECKSUM) {
                 message_in.checksum.push_back(b);
             } else {
-                // If we got the "CR", check the checksums.
-                write_uart(hal.serial(0), "SERIAL0", " Finished reading check sum\n");
+                // If we got the "CRgyro", check the checksums.
                 if(validate_msg(message_in)) {
                     write_uart(hal.serial(0), "SERIAL0", "Valid msg\n");
                     handle_msg(message_in);
@@ -371,7 +356,7 @@ void loop(void) {
     ::printf("Hello on debug console at %.3f seconds\n", (double)(AP_HAL::millis() * 0.001f));
 #endif
 
-    hal.scheduler->delay(10);
+    hal.scheduler->delay(50);
 }
 
 void setup(void) {
