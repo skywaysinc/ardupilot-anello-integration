@@ -142,7 +142,7 @@ bool AP_ExternalAHRS_AnelloEVK::classify_packet(Msg &msg) {
     // Try to classify by comparing received header to declared expected headers
     if (msg_header == IMU_HEADER) {
         msg.msg_type = PacketType::IMU;
-    } else if (msg_header == GPS_HEADER) {
+    } else if (msg_header == GPS_HEADER || msg_header == GP2_HEADER) {
         msg.msg_type = PacketType::GPS;
     } else if (msg_header == INS_HEADER) {
         msg.msg_type = PacketType::INS;
@@ -198,7 +198,7 @@ std::vector<float> AP_ExternalAHRS_AnelloEVK::parse_packet(const std::vector<uin
     std::vector<float> result;
 
     for (int i = 0; i < payload.size(); i++) {
-        if (payload[i] == COMMA_DELIMITER) {
+        if (payload[i] == COMMA_DELIMITER || i == payload.size()) {
             result.push_back(atof(token.c_str()));
             token.clear();
         } else {
@@ -231,7 +231,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<float> &payload) {
     }
 
     // @LoggerMessage: EAH1
-    // @Description: External AHRS data
+    // @Description: External AHRS IMU data
     // @Field: TimeUS: Time since system startup
     // @Field: AX: x acceleration
     // @Field: AY: y acceleration
@@ -307,6 +307,30 @@ void AP_ExternalAHRS_AnelloEVK::handle_filter(const std::vector<float> &payload)
 
     gnss_data.hdop = payload [11];
     gnss_data.hdop = payload [11];
+
+    // @LoggerMessage: EAH2
+    // @Description: External AHRS Filter data
+    // @Field: GT: GPS Time in ns
+    // @Field: Stat: Status
+    // @Field: Lat: Latitude in deg
+    // @Field: Long: Longitude in deg
+    // @Field: HGT: Height above ellipsoid
+    // @Field: VN: x velocity
+    // @Field: VE: y velocity
+    // @Field: VD: z velocity
+    // @Field: RLL: Roll Angle, rotation about body frame X
+    // @Field: PIT: Pitch Angle, rotation about body frame Y
+    // @Field: HDG: Heading Angle, rotation about body frame Z
+    // @Field: ZUPT: 0: Moving, 1: Stationary
+    AP::logger().WriteStreaming("EAH2", "GT,Stat,LAT,LONG,HGT,VN,VE,VD,RLL,PIT,HDG,ZUPT",
+                       "s-DDmnnnddd-", "00000000000",
+                       "Qfffffffffff",
+                       AP_HAL::micros64(),
+                       payload[3],payload[4],payload[5],payload[6],
+                       payload[7],payload[8],payload[9],
+                       payload[10],payload[11],payload[12],
+                       payload[13]);
+
 }
 
 void AP_ExternalAHRS_AnelloEVK::post_filter() const
@@ -352,6 +376,7 @@ void AP_ExternalAHRS_AnelloEVK::post_filter() const
     }
 
     AP::gps().handle_external(gps);
+
 }
 
 int8_t AP_ExternalAHRS_AnelloEVK::get_port(void) const

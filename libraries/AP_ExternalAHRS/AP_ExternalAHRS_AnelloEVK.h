@@ -57,6 +57,7 @@ private:
 
     // ASCII Encoded Message Descriptors
     const std::vector<uint8_t> GPS_HEADER {0x41, 0x50, 0x47, 0x50, 0x53}; // "APGPS"
+    const std::vector<uint8_t> GP2_HEADER {0x41, 0x50, 0x47, 0x50, 0x32}; // "APGP2"
     const std::vector<uint8_t> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x55}; // "APIMU"
     const std::vector<uint8_t> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APGPS"
 
