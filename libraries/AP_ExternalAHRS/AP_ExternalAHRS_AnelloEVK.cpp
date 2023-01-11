@@ -257,8 +257,8 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(const std::vector<float> &payload)
 {
     last_gps_pkt = AP_HAL::millis();
 
-    gnss_data.tow_ms = payload[2] / 1e6; // Convert seconds to ms
-    gnss_data.week = payload[2]/604800;
+    gnss_data.tow_ms = payload[2] / (AP_MSEC_PER_WEEK * 1000000ULL);
+    gnss_data.week =(int) payload[2] / 1000000ULL / (60*60*24*7*1000ULL);
 
     switch ((GNSSFixType) payload[15]) {
         case(GNSSFixType::TIME_ONLY):
@@ -285,6 +285,28 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(const std::vector<float> &payload)
         gnss_data.vertical_position_accuracy = payload[10];
 
         gnss_data.speed_accuracy = payload[14];
+
+    // @LoggerMessage: EAH2
+    // @Description: External AHRS gps data
+    // @Field: TOW: GPS Time of week in ms
+    // @Field: WEK: GPS Week
+    // @Field: LAT: Latitude in deg
+    // @Field: LNG: Longitude in deg
+    // @Field: MSL: Height above mean sea level m
+    // @Field: HDG: GNSS Heading
+    // @Field: FIX: Fix type -> 0: No Fix, 2: 2D Fix, 3: 3D Fix, 5: Time Only
+    // @Field: SNUM: No of satellites
+    // @Field: RTK: RTK status
+
+    AP::logger().WriteStreaming("EAH2", "TOW,WEK,LAT,LONG,MSL,HDG,FIX,SNUM,RTK",
+                       "s-DDmd---", "C00000000",
+                       "Qfffffffffff",
+                       AP_HAL::micros64(),
+                        gnss_data.tow_ms,gnss_data.week,
+                        payload[3],payload[4],payload[5],
+                        payload[8],payload[12],payload[13],
+                        payload[16]);
+
 }
 
 void AP_ExternalAHRS_AnelloEVK::handle_filter(const std::vector<float> &payload)
@@ -308,7 +330,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_filter(const std::vector<float> &payload)
     gnss_data.hdop = payload [11];
     gnss_data.hdop = payload [11];
 
-    // @LoggerMessage: EAH2
+    // @LoggerMessage: EAH3
     // @Description: External AHRS Filter data
     // @Field: GT: GPS Time in ns
     // @Field: Stat: Status
@@ -322,7 +344,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_filter(const std::vector<float> &payload)
     // @Field: PIT: Pitch Angle, rotation about body frame Y
     // @Field: HDG: Heading Angle, rotation about body frame Z
     // @Field: ZUPT: 0: Moving, 1: Stationary
-    AP::logger().WriteStreaming("EAH2", "GT,Stat,LAT,LONG,HGT,VN,VE,VD,RLL,PIT,HDG,ZUPT",
+    AP::logger().WriteStreaming("EAH3", "GT,Stat,LAT,LONG,HGT,VN,VE,VD,RLL,PIT,HDG,ZUPT",
                        "s-DDmnnnddd-", "00000000000",
                        "Qfffffffffff",
                        AP_HAL::micros64(),
