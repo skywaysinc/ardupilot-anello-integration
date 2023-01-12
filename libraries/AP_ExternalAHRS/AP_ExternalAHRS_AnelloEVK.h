@@ -56,6 +56,7 @@ private:
     const uint8_t PKT_IDENTIFIER = 0x23; // "#"
 
     // ASCII Encoded Message Descriptors
+    // see Anello ref: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
     const std::vector<uint8_t> GPS_HEADER {0x41, 0x50, 0x47, 0x50, 0x53}; // "APGPS"
     const std::vector<uint8_t> GP2_HEADER {0x41, 0x50, 0x47, 0x50, 0x32}; // "APGP2"
     const std::vector<uint8_t> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x55}; // "APIMU"

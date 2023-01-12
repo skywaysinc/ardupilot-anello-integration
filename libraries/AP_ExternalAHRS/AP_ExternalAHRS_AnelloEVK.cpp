@@ -62,7 +62,9 @@ void AP_ExternalAHRS_AnelloEVK::update_thread(void)
     }
 }
 
-// Builds packets by looking at each individual byte, once a full packet has been read in it checks the checksum then handles the packet.
+// Builds packets by looking at each individual byte, once a full packet has been read in it checks
+// the checksum then handles the packet.
+// see: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
 void AP_ExternalAHRS_AnelloEVK::build_packet()
 {
     WITH_SEMAPHORE(sem);
@@ -210,6 +212,7 @@ std::vector<float> AP_ExternalAHRS_AnelloEVK::parse_packet(const std::vector<uin
 }
 
 // Collects data from an imu packet into `imu_data`
+// Ref: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#apimu-message
 void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<float> &payload) {
 
 
@@ -253,6 +256,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<float> &payload) {
 }
 
 // Collects data from a gnss packet into `gnss_data`
+// see: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#apgps-message
 void AP_ExternalAHRS_AnelloEVK::handle_gnss(const std::vector<float> &payload)
 {
     last_gps_pkt = AP_HAL::millis();
@@ -274,17 +278,17 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(const std::vector<float> &payload)
             break;
     };
 
-        gnss_data.satellites = payload[13];
+    gnss_data.satellites = payload[13];
 
-        gnss_data.lon = payload[3];
-        gnss_data.lat = payload[4];
-        gnss_data.msl_altitude = payload[6];
+    gnss_data.lon = payload[3];
+    gnss_data.lat = payload[4];
+    gnss_data.msl_altitude = payload[6];
 
 
-        gnss_data.horizontal_position_accuracy =  payload[9];
-        gnss_data.vertical_position_accuracy = payload[10];
+    gnss_data.horizontal_position_accuracy =  payload[9];
+    gnss_data.vertical_position_accuracy = payload[10];
 
-        gnss_data.speed_accuracy = payload[14];
+    gnss_data.speed_accuracy = payload[14];
 
     // @LoggerMessage: EAH2
     // @Description: External AHRS gps data
