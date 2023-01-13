@@ -157,7 +157,7 @@ bool AP_ExternalAHRS_AnelloEVK::classify_packet(Msg &msg) {
 }
 
 // returns true if the XOR checksum for the packet is valid, else false.
-bool AP_ExternalAHRS_AnelloEVK::valid_packet(const Msg &msg) const
+bool AP_ExternalAHRS_AnelloEVK::valid_packet(Msg &msg)
 {
     uint8_t checksum = 16 * char_to_hex(msg.checksum[0]) + char_to_hex(msg.checksum[1]);
 
@@ -173,7 +173,7 @@ bool AP_ExternalAHRS_AnelloEVK::valid_packet(const Msg &msg) const
 }
 
 // Calls the correct functions based on the packet descriptor of the packet
-void AP_ExternalAHRS_AnelloEVK::handle_packet(const Msg &packet) {
+void AP_ExternalAHRS_AnelloEVK::handle_packet(Msg &packet) {
 
     std::vector<float> parsed_values = parse_packet(packet.payload);
 
@@ -194,12 +194,12 @@ void AP_ExternalAHRS_AnelloEVK::handle_packet(const Msg &packet) {
 }
 
 // Parses the csv payload to a vector of floats.
-std::vector<float> AP_ExternalAHRS_AnelloEVK::parse_packet(const std::vector<uint8_t> &payload) const {
+std::vector<float> AP_ExternalAHRS_AnelloEVK::parse_packet(std::vector<uint8_t> &payload) {
 
     std::string token;
     std::vector<float> result;
 
-    for (int i = 0; i < payload.size(); i++) {
+    for (uint i = 0; i <= payload.size(); i++) {
         if (payload[i] == COMMA_DELIMITER || i == payload.size()) {
             result.push_back(atof(token.c_str()));
             token.clear();
@@ -213,8 +213,7 @@ std::vector<float> AP_ExternalAHRS_AnelloEVK::parse_packet(const std::vector<uin
 
 // Collects data from an imu packet into `imu_data`
 // Ref: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#apimu-message
-void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<float> &payload) {
-
+void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<float> &payload) {
 
     last_ins_pkt = AP_HAL::millis();
     {
@@ -230,8 +229,11 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<float> &payload) {
             gyro: state.gyro,
             temperature: payload[11],
         };
+
+        //printf("%f\n", ins.temperature);
         AP::ins().handle_external(ins);
     }
+
 
     // @LoggerMessage: EAH1
     // @Description: External AHRS IMU data
@@ -243,9 +245,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<float> &payload) {
     // @Field: WY: y angular velocity
     // @Field: WZ: z angular velocity
     // @Field: OG_WZ: z angular velocity measured by FOG
-    // @Field: ODO: Scaled Composite Odometer Value
-    // @Field: ODO_TIME: Timestamp of Odometer Reading
-    // @Field: T: Temperature
+    // @Field: TempC: Temperature
     AP::logger().WriteStreaming("EAH1", "TimeUS,AX,AY,AZ,WX,WY,WZ,OG_WZ,TempC",
                        "soooEEEEO", "C00000000",
                        "Qffffffff",
@@ -257,7 +257,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(const std::vector<float> &payload) {
 
 // Collects data from a gnss packet into `gnss_data`
 // see: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#apgps-message
-void AP_ExternalAHRS_AnelloEVK::handle_gnss(const std::vector<float> &payload)
+void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<float> &payload)
 {
     last_gps_pkt = AP_HAL::millis();
 
@@ -314,7 +314,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(const std::vector<float> &payload)
 
 }
 
-void AP_ExternalAHRS_AnelloEVK::handle_filter(const std::vector<float> &payload)
+void AP_ExternalAHRS_AnelloEVK::handle_filter(std::vector<float> &payload)
 {
     last_filter_pkt = AP_HAL::millis();
 
@@ -361,7 +361,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_filter(const std::vector<float> &payload)
 
 }
 
-void AP_ExternalAHRS_AnelloEVK::post_filter() const
+void AP_ExternalAHRS_AnelloEVK::post_filter()
 {
     {
         WITH_SEMAPHORE(state.sem);
@@ -404,6 +404,7 @@ void AP_ExternalAHRS_AnelloEVK::post_filter() const
     }
 
     AP::gps().handle_external(gps);
+    //printf("%i\n", gps.fix_type);
 
 }
 

@@ -60,7 +60,7 @@ private:
     const std::vector<uint8_t> GPS_HEADER {0x41, 0x50, 0x47, 0x50, 0x53}; // "APGPS"
     const std::vector<uint8_t> GP2_HEADER {0x41, 0x50, 0x47, 0x50, 0x32}; // "APGP2"
     const std::vector<uint8_t> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x55}; // "APIMU"
-    const std::vector<uint8_t> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APGPS"
+    const std::vector<uint8_t> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APINS"
 
     AP_HAL::UARTDriver *uart;
     bool port_open = false;
@@ -153,15 +153,15 @@ private:
     } filter_data;
 
     bool classify_packet(Msg &msg);
-    bool valid_packet(const Msg &msg) const;
-    std::vector<float> parse_packet(const std::vector<uint8_t> &payload) const;
+    bool valid_packet(Msg &msg);
+    std::vector<float> parse_packet(std::vector<uint8_t> &payload);
     void build_packet();
-    void handle_filter(const std::vector<float> &payload);
-    void handle_gnss(const std::vector<float> &payload);
-    void handle_imu(const std::vector<float> &packet);
-    void handle_packet(const Msg &packet);
-    void post_filter() const;
-    void post_imu() const;
+    void handle_filter(std::vector<float> &payload);
+    void handle_gnss(std::vector<float> &payload);
+    void handle_imu(std::vector<float> &packet);
+    void handle_packet(Msg &packet);
+    void post_filter();
+    void post_imu();
     void update_thread();
 
 };

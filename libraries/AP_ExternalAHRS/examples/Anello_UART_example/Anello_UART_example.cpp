@@ -246,6 +246,7 @@ void handle_imu(const std::vector<float> &imu_msg) {
     //auto gyro = Vector3f{imu_msg[5], imu_msg[6], imu_msg[8]};
 
     write_uart(hal.serial(0), "SERIAL0", "handled imu msg\n");
+    write_uart(hal.serial(0), "SERIAL0", imu_msg[11]);
 }
 
 /**
