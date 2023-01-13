@@ -230,7 +230,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<float> &payload) {
             temperature: payload[11],
         };
 
-        //printf("%f\n", ins.temperature);
+        printf("%f\n", ins.temperature);
         AP::ins().handle_external(ins);
     }
 
@@ -262,7 +262,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<float> &payload)
     last_gps_pkt = AP_HAL::millis();
 
     gnss_data.tow_ms = payload[2] / (AP_MSEC_PER_WEEK * 1000000ULL);
-    gnss_data.week =(int) payload[2] / 1000000ULL / (60*60*24*7*1000ULL);
+    gnss_data.week = (int) (payload[2] / 1000000 / (60*60*24*7*1000));
 
     switch ((GNSSFixType) payload[15]) {
         case(GNSSFixType::TIME_ONLY):
@@ -404,7 +404,7 @@ void AP_ExternalAHRS_AnelloEVK::post_filter()
     }
 
     AP::gps().handle_external(gps);
-    //printf("%i\n", gps.fix_type);
+    printf("%i\n", gps.fix_type);
 
 }
 
