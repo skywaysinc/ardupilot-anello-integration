@@ -50,17 +50,17 @@ public:
 
 private:
     // Useful ASCII encoded characters
-    const uint8_t COMMA_DELIMITER = 0x2C; // ","
-    const uint8_t END_CHECKSUM = 0x0D; // "CR"
-    const uint8_t END_DATA = 0x2A; // "*"
-    const uint8_t PKT_IDENTIFIER = 0x23; // "#"
+    const char COMMA_DELIMITER = ',';
+    const char END_CHECKSUM = 0x0D; // "CR"
+    const char END_DATA = '*';
+    const char PKT_IDENTIFIER = '#';
 
     // ASCII Encoded Message Descriptors
     // see Anello ref: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
-    const std::vector<uint8_t> GPS_HEADER {0x41, 0x50, 0x47, 0x50, 0x53}; // "APGPS"
-    const std::vector<uint8_t> GP2_HEADER {0x41, 0x50, 0x47, 0x50, 0x32}; // "APGP2"
-    const std::vector<uint8_t> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x55}; // "APIMU"
-    const std::vector<uint8_t> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APINS"
+    const char* GPS_HEADER = "APGPS";
+    const char* GP2_HEADER = "APGP2";
+    const char* IMU_HEADER = "APIMU";
+    const char* INS_HEADER = "APINS";
 
     AP_HAL::UARTDriver *uart;
     bool port_open = false;
@@ -110,14 +110,18 @@ private:
     struct Msg {
         PacketType msg_type;
         ParseState state;
-        std::vector<uint8_t> payload;
-        std::vector<uint8_t> checksum;
+        char header_type[5];
+        char payload[100];
+        char checksum[2];
+        uint8_t running_checksum;
+        uint8_t length;
+
     } message_in;
 
     struct {
         uint16_t week;
         uint32_t tow_ms;
-        GPS_FIX_TYPE fix_type;
+        uint8_t fix_type;
         uint8_t satellites;
         float horizontal_position_accuracy;
         float vertical_position_accuracy;
@@ -154,15 +158,17 @@ private:
 
     bool classify_packet(Msg &msg);
     bool valid_packet(Msg &msg);
-    std::vector<float> parse_packet(std::vector<uint8_t> &payload);
+    std::vector<double> parse_packet(char payload[]);
     void build_packet();
-    void handle_filter(std::vector<float> &payload);
-    void handle_gnss(std::vector<float> &payload);
-    void handle_imu(std::vector<float> &packet);
+    void handle_filter(std::vector<double> &payload);
+    void handle_gnss(std::vector<double> &payload);
+    void handle_imu(std::vector<double> &packet);
     void handle_packet(Msg &packet);
     void post_filter();
     void post_imu();
     void update_thread();
+    int i = 0;
+
 
 };
 

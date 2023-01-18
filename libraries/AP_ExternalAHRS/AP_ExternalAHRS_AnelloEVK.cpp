@@ -23,7 +23,6 @@
 #include <GCS_MAVLink/GCS.h>
 #include <AP_Logger/AP_Logger.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
-#include <string>
 
 extern const AP_HAL::HAL &hal;
 
@@ -70,7 +69,7 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
     WITH_SEMAPHORE(sem);
     uint32_t nbytes = MIN(uart->available(), 2048u);
     while (nbytes--> 0) {
-        const int16_t b = uart->read();
+        const char b = uart->read();
 
         // If the byte does not make sense, do nothing.
         if (b < 0) {
@@ -84,8 +83,11 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                     // Start looking for what type of message we can expect
                     message_in.state = ParseState::WaitingFor_MsgDescriptor;
                     // Clear the container for the data of the message.
-                    message_in.payload.clear();
-                    message_in.checksum.clear();
+                    message_in.payload[0] = 0;
+                    message_in.checksum[0] = 0;
+                    message_in.running_checksum = 0;
+                    message_in.header_type[0] = 0;
+                    i = 0;
                 }
                 break;
 
@@ -98,20 +100,25 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                     } else {
                         // Continue recording data now that we know it is one of the expected messages
                         message_in.state = ParseState::WaitingFor_Data;
+                        i = 0;
                     }
                 }
                 // Record data. The checksum runs over the message descriptor section also.
-                message_in.payload.push_back(b);
+                message_in.running_checksum ^= b;
+                message_in.header_type[i++] = b;
                 break;
 
             case ParseState::WaitingFor_Data:
                 // If we have not receive the ASCII character representing the end of data,
                 // continue recording data.
                 if (b != END_DATA) {
-                    message_in.payload.push_back(b);
+                    message_in.payload[i++] = b;
+                    message_in.running_checksum ^= b;
+                    message_in.length = i;
                 } else {
                     // If we got the "*"", record the checksum to check for data integrity.
                     message_in.state = ParseState::WaitingFor_Checksum;
+                    i = 0;
                 }
                 break;
 
@@ -119,7 +126,7 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                 // We are still waiting for checksum data if we have not seen the "CR" character.
                 // Therefore still record data.
                 if (b!= END_CHECKSUM) {
-                    message_in.checksum.push_back(b);
+                    message_in.checksum[i++] = b;
                 } else {
                     //If we got the "CR", check the checksums.
                     if(valid_packet(message_in)) {
@@ -128,8 +135,9 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                     // Now that we got the end of the packet, and have handled the message if it needs handling,
                     // go back to waiting for data.
                     message_in.state = ParseState::WaitingFor_PktIdentifier;
-                    message_in.payload.clear();
-                    message_in.checksum.clear();
+                    message_in.payload[0] = 0;
+                    message_in.checksum[0] = 0;
+                    message_in.running_checksum = 0;
                 }
                 break;
         }
@@ -138,15 +146,13 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
 
 // returns true if the packet header bytes matches an expected message type.
 bool AP_ExternalAHRS_AnelloEVK::classify_packet(Msg &msg) {
-    // Pull out header section (5 bytes) from vector of received bytes.
-    std::vector<uint8_t> msg_header = {msg.payload.begin(), msg.payload.begin()+5};
 
     // Try to classify by comparing received header to declared expected headers
-    if (msg_header == IMU_HEADER) {
+    if (strcmp(msg.header_type,IMU_HEADER)) {
         msg.msg_type = PacketType::IMU;
-    } else if (msg_header == GPS_HEADER || msg_header == GP2_HEADER) {
+    } else if (strcmp(msg.header_type,GPS_HEADER) || strcmp(msg.header_type,GP2_HEADER)) {
         msg.msg_type = PacketType::GPS;
-    } else if (msg_header == INS_HEADER) {
+    } else if (strcmp(msg.header_type,INS_HEADER)) {
         msg.msg_type = PacketType::INS;
     } else {
         // If not matches declare unknown and return false.
@@ -164,18 +170,14 @@ bool AP_ExternalAHRS_AnelloEVK::valid_packet(Msg &msg)
     // Calculate the expected CRC
     // Simple XOR, see:
     // https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
-    uint8_t crc = 0;
-    for (auto i : msg.payload) {
-        crc ^= i;
-    }
 
-    return crc == checksum;
+    return checksum == msg.running_checksum;
 }
 
 // Calls the correct functions based on the packet descriptor of the packet
 void AP_ExternalAHRS_AnelloEVK::handle_packet(Msg &packet) {
 
-    std::vector<float> parsed_values = parse_packet(packet.payload);
+    std::vector<double> parsed_values = parse_packet(packet.payload);
 
     switch (packet.msg_type) {
     case PacketType::IMU:
@@ -194,32 +196,27 @@ void AP_ExternalAHRS_AnelloEVK::handle_packet(Msg &packet) {
 }
 
 // Parses the csv payload to a vector of floats.
-std::vector<float> AP_ExternalAHRS_AnelloEVK::parse_packet(std::vector<uint8_t> &payload) {
+std::vector<double> AP_ExternalAHRS_AnelloEVK::parse_packet(char payload[]) {
 
-    std::string token;
-    std::vector<float> result;
-
-    for (uint i = 0; i <= payload.size(); i++) {
-        if (payload[i] == COMMA_DELIMITER || i == payload.size()) {
-            result.push_back(atof(token.c_str()));
-            token.clear();
-        } else {
-            token += payload[i];
-        }
-
+    std::vector<double> result;
+    char *saveptr = nullptr;
+    for (char *pname = strtok_r(payload, ",", &saveptr);
+         pname != nullptr;
+         pname = strtok_r(nullptr, ",", &saveptr)) {
+        result[i++] = atof(pname);
     }
     return result;
 }
 
 // Collects data from an imu packet into `imu_data`
 // Ref: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#apimu-message
-void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<float> &payload) {
+void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<double> &payload) {
 
     last_ins_pkt = AP_HAL::millis();
     {
         WITH_SEMAPHORE(state.sem);
-        state.accel = Vector3f{payload[2], payload[3], payload[4]} * GRAVITY_MSS; // convert from g to m/s/s
-        state.gyro = Vector3f{payload[5], payload[6], payload[8]} * DEG_TO_RAD; // use FOG gyro for z and convert to rads/s
+        state.accel = Vector3f{float(payload[2]), float(payload[3]), float(payload[4])} * GRAVITY_MSS; // convert from g to m/s/s
+        state.gyro = Vector3f{float(payload[5]), float(payload[6]), float(payload[8])} * DEG_TO_RAD; // use FOG gyro for z and convert to rads/s
         state.have_quaternion = false;
     }
 
@@ -227,10 +224,10 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<float> &payload) {
         AP_ExternalAHRS::ins_data_message_t ins {
             accel: state.accel,
             gyro: state.gyro,
-            temperature: payload[11],
+            temperature: float(payload[11]),
         };
 
-        printf("%f\n", ins.temperature);
+        // printf("%f\n", ins.temperature);
         AP::ins().handle_external(ins);
     }
 
@@ -257,7 +254,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<float> &payload) {
 
 // Collects data from a gnss packet into `gnss_data`
 // see: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#apgps-message
-void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<float> &payload)
+void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<double> &payload)
 {
     last_gps_pkt = AP_HAL::millis();
 
@@ -314,7 +311,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<float> &payload)
 
 }
 
-void AP_ExternalAHRS_AnelloEVK::handle_filter(std::vector<float> &payload)
+void AP_ExternalAHRS_AnelloEVK::handle_filter(std::vector<double> &payload)
 {
     last_filter_pkt = AP_HAL::millis();
 
@@ -404,7 +401,7 @@ void AP_ExternalAHRS_AnelloEVK::post_filter()
     }
 
     AP::gps().handle_external(gps);
-    printf("%i\n", gps.fix_type);
+    // printf("%i\n", gps.fix_type);
 
 }
 
