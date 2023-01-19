@@ -14,9 +14,13 @@
   Support for Anello EVK serially connected AHRS Systems
  */
 
+
 #include "AP_ExternalAHRS_AnelloEVK.h"
 
 #if HAL_EXTERNAL_AHRS_ANELLO_EVK_ENABLED
+
+#define ENABLE_ARDUPILOT_CALLS 0
+
 
 #include <AP_GPS/AP_GPS.h>
 #include <AP_InertialSensor/AP_InertialSensor.h>
@@ -125,6 +129,7 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                     if(valid_packet(message_in)) {
                         handle_packet(message_in);
                     }
+
                     // Now that we got the end of the packet, and have handled the message if it needs handling,
                     // go back to waiting for data.
                     message_in.state = ParseState::WaitingFor_PktIdentifier;
@@ -175,7 +180,7 @@ bool AP_ExternalAHRS_AnelloEVK::valid_packet(Msg &msg)
 // Calls the correct functions based on the packet descriptor of the packet
 void AP_ExternalAHRS_AnelloEVK::handle_packet(Msg &packet) {
 
-    std::vector<float> parsed_values = parse_packet(packet.payload);
+    std::vector<double> parsed_values = parse_packet(packet.payload);
 
     switch (packet.msg_type) {
     case PacketType::IMU:
@@ -194,10 +199,10 @@ void AP_ExternalAHRS_AnelloEVK::handle_packet(Msg &packet) {
 }
 
 // Parses the csv payload to a vector of floats.
-std::vector<float> AP_ExternalAHRS_AnelloEVK::parse_packet(std::vector<uint8_t> &payload) {
+std::vector<double> AP_ExternalAHRS_AnelloEVK::parse_packet(std::vector<uint8_t> &payload) {
 
     std::string token;
-    std::vector<float> result;
+    std::vector<double> result;
 
     for (uint i = 0; i <= payload.size(); i++) {
         if (payload[i] == COMMA_DELIMITER || i == payload.size()) {
@@ -213,13 +218,13 @@ std::vector<float> AP_ExternalAHRS_AnelloEVK::parse_packet(std::vector<uint8_t> 
 
 // Collects data from an imu packet into `imu_data`
 // Ref: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#apimu-message
-void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<float> &payload) {
+void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<double> &payload) {
 
     last_ins_pkt = AP_HAL::millis();
     {
         WITH_SEMAPHORE(state.sem);
-        state.accel = Vector3f{payload[2], payload[3], payload[4]} * GRAVITY_MSS; // convert from g to m/s/s
-        state.gyro = Vector3f{payload[5], payload[6], payload[8]} * DEG_TO_RAD; // use FOG gyro for z and convert to rads/s
+        state.accel = Vector3f{static_cast<float>(payload[2]), static_cast<float>(payload[3]), static_cast<float>(payload[4])} * GRAVITY_MSS; // convert from g to m/s/s
+        state.gyro = Vector3f{static_cast<float>(payload[5]), static_cast<float>(payload[6]), static_cast<float>(payload[8])} * DEG_TO_RAD; // use FOG gyro for z and convert to rads/s
         state.have_quaternion = false;
     }
 
@@ -227,11 +232,12 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<float> &payload) {
         AP_ExternalAHRS::ins_data_message_t ins {
             accel: state.accel,
             gyro: state.gyro,
-            temperature: payload[11],
+            temperature: static_cast<float>(payload[11]),
         };
 
-        printf("%f\n", ins.temperature);
-        AP::ins().handle_external(ins);
+        if (ENABLE_ARDUPILOT_CALLS) {
+            AP::ins().handle_external(ins);
+        }
     }
 
 
@@ -257,28 +263,29 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<float> &payload) {
 
 // Collects data from a gnss packet into `gnss_data`
 // see: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#apgps-message
-void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<float> &payload)
+void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<double> &payload)
 {
     last_gps_pkt = AP_HAL::millis();
 
-    gnss_data.tow_ms = payload[2] / (AP_MSEC_PER_WEEK * 1000000ULL);
-    gnss_data.week = (int) (payload[2] / 1000000 / (60*60*24*7*1000));
+
+    gnss_data.week = static_cast<uint16_t>(payload[2] / (AP_MSEC_PER_WEEK * 1000000));
+    gnss_data.tow_ms = static_cast<uint32_t>(payload[2] / 1000000 - gnss_data.week * AP_MSEC_PER_WEEK);
 
     switch ((GNSSFixType) payload[15]) {
         case(GNSSFixType::TIME_ONLY):
         case(GNSSFixType::NONE):
         case(GNSSFixType::INVALID):
-            gnss_data.fix_type = GPS_FIX_TYPE_NO_FIX;
+            gnss_data.fix_type = static_cast<uint8_t>(GPS_FIX_TYPE_NO_FIX);
             break;
         case (GNSSFixType::TYPE_2D_FIX):
-            gnss_data.fix_type = GPS_FIX_TYPE_2D_FIX;
+            gnss_data.fix_type = static_cast<uint8_t>(GPS_FIX_TYPE_2D_FIX);
             break;
         case (GNSSFixType::TYPE_3D_FIX):
-            gnss_data.fix_type = GPS_FIX_TYPE_3D_FIX;
+            gnss_data.fix_type = static_cast<uint8_t>(GPS_FIX_TYPE_3D_FIX);
             break;
     };
 
-    gnss_data.satellites = payload[13];
+    gnss_data.satellites = uint8_t(payload[13]);
 
     gnss_data.lon = payload[3];
     gnss_data.lat = payload[4];
@@ -314,7 +321,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<float> &payload)
 
 }
 
-void AP_ExternalAHRS_AnelloEVK::handle_filter(std::vector<float> &payload)
+void AP_ExternalAHRS_AnelloEVK::handle_filter(std::vector<double> &payload)
 {
     last_filter_pkt = AP_HAL::millis();
 
@@ -375,7 +382,7 @@ void AP_ExternalAHRS_AnelloEVK::post_filter()
     AP_ExternalAHRS::gps_data_message_t gps {
         gps_week: filter_data.week,
         ms_tow: filter_data.tow_ms,
-        fix_type: (uint8_t) gnss_data.fix_type,
+        fix_type: gnss_data.fix_type,
         satellites_in_view: gnss_data.satellites,
 
         horizontal_pos_accuracy: gnss_data.horizontal_position_accuracy,
@@ -403,8 +410,9 @@ void AP_ExternalAHRS_AnelloEVK::post_filter()
         state.have_origin = true;
     }
 
-    AP::gps().handle_external(gps);
-    printf("%i\n", gps.fix_type);
+    if (ENABLE_ARDUPILOT_CALLS) {
+        AP::gps().handle_external(gps);
+    }
 
 }
 

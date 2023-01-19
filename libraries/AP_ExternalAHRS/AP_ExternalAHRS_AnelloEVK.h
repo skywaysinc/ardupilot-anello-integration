@@ -117,7 +117,7 @@ private:
     struct {
         uint16_t week;
         uint32_t tow_ms;
-        GPS_FIX_TYPE fix_type;
+        uint8_t fix_type;
         uint8_t satellites;
         float horizontal_position_accuracy;
         float vertical_position_accuracy;
@@ -154,11 +154,11 @@ private:
 
     bool classify_packet(Msg &msg);
     bool valid_packet(Msg &msg);
-    std::vector<float> parse_packet(std::vector<uint8_t> &payload);
+    std::vector<double> parse_packet(std::vector<uint8_t> &payload);
     void build_packet();
-    void handle_filter(std::vector<float> &payload);
-    void handle_gnss(std::vector<float> &payload);
-    void handle_imu(std::vector<float> &packet);
+    void handle_filter(std::vector<double> &payload);
+    void handle_gnss(std::vector<double> &payload);
+    void handle_imu(std::vector<double> &packet);
     void handle_packet(Msg &packet);
     void post_filter();
     void post_imu();
