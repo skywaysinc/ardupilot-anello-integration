@@ -235,9 +235,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<double> &payload) {
             temperature: static_cast<float>(payload[11]),
         };
 
-        if (ENABLE_ARDUPILOT_CALLS) {
-            AP::ins().handle_external(ins);
-        }
+        AP::ins().handle_external(ins);
     }
 
 
