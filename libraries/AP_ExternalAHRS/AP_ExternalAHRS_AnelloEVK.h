@@ -100,11 +100,11 @@ private:
     };
 
     enum class GNSSFixType {
-        TYPE_3D_FIX = 3,
-        TYPE_2D_FIX = 2,
-        TIME_ONLY = 5,
-        NONE = 0,
-        INVALID = 4
+        NO_GPS,
+        GPS_3D_FIX,
+        GPS_FIX_3D_DGPS,
+        GPS_OK_FIX_3D_RTK_FLOAT,
+        GPS_OK_FIX_3D_RTK_FIXED,
     };
 
     struct Msg {
@@ -117,19 +117,13 @@ private:
     struct {
         uint16_t week;
         uint32_t tow_ms;
-        uint8_t fix_type;
-        uint8_t satellites;
-        float horizontal_position_accuracy;
-        float vertical_position_accuracy;
         float hdop;
         float vdop;
-        int32_t lon;
-        int32_t lat;
-        int32_t msl_altitude;
-        float ned_velocity_north;
-        float ned_velocity_east;
-        float ned_velocity_down;
+        uint8_t num_sats;
         float speed_accuracy;
+        int32_t msl_altitude;
+        float horizontal_position_accuracy;
+        float vertical_position_accuracy;
     } gnss_data;
 
     struct {
@@ -141,15 +135,13 @@ private:
     struct {
         uint16_t week;
         uint32_t tow_ms;
-        float horizontal_position_accuracy;
-        float vertical_position_accuracy;
         int32_t lon;
         int32_t lat;
         int32_t hae_altitude;
         float ned_velocity_north;
         float ned_velocity_east;
         float ned_velocity_down;
-        float speed_accuracy;
+        uint8_t fix_type;
     } filter_data;
 
     bool classify_packet(Msg &msg);
