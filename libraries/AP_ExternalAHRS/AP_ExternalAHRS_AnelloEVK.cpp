@@ -19,9 +19,6 @@
 
 #if HAL_EXTERNAL_AHRS_ANELLO_EVK_ENABLED
 
-#define ENABLE_ARDUPILOT_CALLS 0
-
-
 #include <AP_GPS/AP_GPS.h>
 #include <AP_InertialSensor/AP_InertialSensor.h>
 #include <GCS_MAVLink/GCS.h>
@@ -412,9 +409,7 @@ void AP_ExternalAHRS_AnelloEVK::post_filter()
         state.have_origin = true;
     }
 
-    if (ENABLE_ARDUPILOT_CALLS) {
-        AP::gps().handle_external(gps);
-    }
+    AP::gps().handle_external(gps);
 
 }
 
