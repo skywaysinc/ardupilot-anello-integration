@@ -252,7 +252,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<double> &payload) {
                        "Qffffffff",
                        AP_HAL::micros64(),
                        payload[2]*GRAVITY_MSS,payload[3]*GRAVITY_MSS,payload[4]*GRAVITY_MSS,
-                       payload[5], payload[6], payload[7], payload[8],
+                       payload[5]*DEG_TO_RAD, payload[6]*DEG_TO_RAD, payload[7]*DEG_TO_RAD, payload[8]*DEG_TO_RAD,
                        payload[11]);
 }
 
