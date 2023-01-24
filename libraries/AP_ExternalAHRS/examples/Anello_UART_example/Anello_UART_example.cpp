@@ -17,16 +17,20 @@
 const AP_HAL::HAL& hal = AP_HAL::get_HAL();
 
 // ASCII Encoded Message Descriptors
-const std::vector<char> GPS_HEADER {0x41, 0x50, 0x47, 0x50, 0x53}; // "APGPS"
-const std::vector<char> GP2_HEADER {0x41, 0x50, 0x47, 0x50, 0x32}; // "APGP2"
-const std::vector<char> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x55}; // "APIMU"
-const std::vector<char> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APINS"
+const char COMMA_DELIMITER = ',';
+const char END_CHECKSUM = '\n';// "CR"
+const char END_DATA = '*';
+const char PKT_IDENTIFIER = '#';
 
-// Useful ASCII encoded characters
-const char COMMA_DELIMITER = 0x2C; // ","
-const char END_CHECKSUM = 0x0D; // "CR"
-const char END_DATA = 0x2A; // "*"
-const char PKT_IDENTIFIER = 0x23; // "#"
+
+// ASCII Encoded Message Descriptors
+// see Anello ref: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
+const char* GPS_HEADER = "APGPS";
+const char* GP2_HEADER = "APGP2";
+const char* IMU_HEADER = "APIMU";
+const char* INS_HEADER = "APINS";
+
+uint pkt_counter = 0;
 
 /**
  * @brief Convience class enumerating states for a simple parsing state machine.
@@ -50,6 +54,29 @@ enum class PacketType {
     UNKNOWN,
 };
 
+enum class IMUPacketField {
+    TIME_ms,
+    ACCEL_X_g,
+    ACCEL_Y_g,
+    ACCEL_Z_g,
+    GYRO_X_dps,
+    GYRO_Y_dps,
+    GYRO_Z_dps,
+    OPT_GYRO_Z_dps,
+    ODOM_mps,
+    ODOM_TIME_ms,
+    TEMP_degC,
+};
+
+enum class GNSSFixType {
+    NO_GPS,
+    GPS_3D_FIX,
+    GPS_FIX_3D_DGPS,
+    GPS_OK_FIX_3D_RTK_FLOAT,
+    GPS_OK_FIX_3D_RTK_FIXED,
+};
+
+
 /**
  * @brief Structure to hold attributes for the complete data packet sent from EVK.
  *
@@ -57,23 +84,32 @@ enum class PacketType {
 struct Msg {
     PacketType msg_type;
     ParseState state;
-    std::vector<char> payload;
-    std::vector<char> checksum;
+    char header_type[5];
+    char payload[100];
+    char checksum[2];
+    uint8_t running_checksum;
+    uint8_t length;
 } message_in;
 
 
 // Declarations of functions
-bool classify_msg(Msg &msg);
-bool validate_msg(const Msg &msg);
+bool classify_packet(Msg &msg);
+bool valid_packet(Msg &msg);
 char read_uart(AP_HAL::UARTDriver *uart, const char *name);
-static void setup_uart(AP_HAL::UARTDriver *uart, const char *name);
-static void write_uart(AP_HAL::UARTDriver *uart, const char *name, const char *s);
-std::vector<float> parse_msg (const std::vector<char> &msg);
-void handle_imu(const std::vector<float> &msg);
-void handle_msg(const Msg &msg);
+std::vector<double> parse_packet(char payload[]);
+void build_packet();
+void handle_filter(const std::vector<double> &payload);
+void handle_gnss(const std::vector<double> &payload);
+void handle_imu(const std::vector<double> &packet);
+void handle_packet(Msg &packet);
+void update_thread();
+
 void loop();
 void setup();
+static void setup_uart(AP_HAL::UARTDriver *uart, const char *name);
+static void write_uart(AP_HAL::UARTDriver *uart, const char *name, const char *s);
 void write_uart(AP_HAL::UARTDriver *uart, const char *name, const Vector3f &vec);
+void write_uart(AP_HAL::UARTDriver *uart, const char *name, const float &val);
 
 /**
  * @brief Determine if the message corresponds to one of the expected types.
@@ -82,16 +118,14 @@ void write_uart(AP_HAL::UARTDriver *uart, const char *name, const Vector3f &vec)
  * @return true If the first 5 payload bytes match an expected header.
  * @return false If the first 5 payload bytes do not match expected header.
  */
-bool classify_msg(Msg &msg) {
-    // Pull out header section (5 bytes) from vector of received bytes.
-    std::vector<char> msg_header = {msg.payload.begin(), msg.payload.begin()+5};
+bool classify_packet(Msg &msg) {
 
     // Try to classify by comparing received header to declared expected headers
-    if (msg_header == IMU_HEADER) {
+    if (strcmp(msg.header_type,IMU_HEADER)) {
         msg.msg_type = PacketType::IMU;
-    } else if (msg_header == GPS_HEADER || msg_header == GP2_HEADER) {
+    } else if (strcmp(msg.header_type,GPS_HEADER) || strcmp(msg.header_type,GP2_HEADER)) {
         msg.msg_type = PacketType::GPS;
-    } else if (msg_header == INS_HEADER) {
+    } else if (strcmp(msg.header_type,INS_HEADER)) {
         msg.msg_type = PacketType::INS;
     } else {
         // If not matches declare unknown and return false.
@@ -99,28 +133,6 @@ bool classify_msg(Msg &msg) {
         return false;
     }
     return true;
-}
-
-/**
- * @brief Runs simple XOR check to determine if there were any errors in transmission.
- *
- * @param msg Vector or received bytes
- * @return true If the received checksum matches the calculated checksum
- * @return false If the received checksum does not match the calculated checksum
- */
-bool validate_msg(const Msg &msg) {
-
-    uint8_t checksum = 16 * char_to_hex(msg.checksum[0]) + char_to_hex(msg.checksum[1]);
-
-    // Calculate the expected CRC
-    // Simple XOR, see:
-    // https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
-    uint8_t crc = 0;
-    for (auto i : msg.payload) {
-        crc ^= i;
-    }
-
-    return crc == checksum;
 }
 
 /**
@@ -211,27 +223,22 @@ void write_uart(AP_HAL::UARTDriver *uart, const char *name, const float &val) {
  * @param msg The vector of characters transmitted over UART
  * @return std::vector<float> A vector of floats converted from UART message
  */
-std::vector<float> parse_msg(const std::vector<char> &msg) {
+// Parses the csv payload to a vector of floats.
+std::vector<double> parse_packet(char payload[]) {
 
-    std::string field;
-    std::vector<float> parsed_values;
+    std::vector<double> result;
 
-    for (int i=0; i <= msg.size(); i++) {
-        if (msg[i] == COMMA_DELIMITER || i == msg.size()) {
-            write_uart(hal.serial(0), "SERIAL0", field.c_str());
-            write_uart(hal.serial(0), "SERIAL0", "\n");
-
-            parsed_values.push_back(atof(field.c_str()));
-            field.clear();
-
-        } else {
-            field += msg[i];
-        }
+    char *saveptr = nullptr;
+    for (char *pname = strtok_r(payload, ",", &saveptr);
+        pname != nullptr;
+        pname = strtok_r(nullptr, ",", &saveptr)) {
+        result[pkt_counter++] = atof(pname);
     }
-    return parsed_values;
+    return result;
 }
 
-void handle_gnss(const std::vector<float> &msg) {
+
+void handle_gnss(const std::vector<double> &msg) {
     write_uart(hal.serial(0), "SERIAL0", "handled gnss msg\n");
 
 }
@@ -241,7 +248,7 @@ void handle_gnss(const std::vector<float> &msg) {
  *
  * @param imu_msg the vector of floats containing imu values.
  */
-void handle_imu(const std::vector<float> &imu_msg) {
+void handle_imu(const std::vector<double> &imu_msg) {
     //auto accel = Vector3f{imu_msg[2], imu_msg[3], imu_msg[4]};
     //auto gyro = Vector3f{imu_msg[5], imu_msg[6], imu_msg[8]};
 
@@ -249,28 +256,45 @@ void handle_imu(const std::vector<float> &imu_msg) {
     write_uart(hal.serial(0), "SERIAL0", imu_msg[11]);
 }
 
+void handle_filter(const std::vector<double> &msg) {
+    write_uart(hal.serial(0), "SERIAL0", "handled filter msg\n");
+
+}
+
+// returns true if the XOR checksum for the packet is valid, else false.
+bool valid_packet(Msg &msg)
+{
+    uint8_t checksum = 16 * char_to_hex(msg.checksum[0]) + char_to_hex(msg.checksum[1]);
+
+    // Calculate the expected CRC
+    // Simple XOR, see:
+    // https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
+    return checksum == msg.running_checksum;
+}
+
+
+
 /**
  * @brief Parses the message received over UART based on what type of message.
  *
  * @param msg The message received over UART.
  */
-void handle_msg(const Msg &msg) {
+void handle_packet(Msg &packet) {
 
-    std::vector<float> parsed_values = parse_msg(msg.payload);
+    std::vector<double> parsed_values = parse_packet(packet.payload);
 
-
-    switch (msg.msg_type) {
-        case PacketType::IMU:
-            handle_imu(parsed_values);
-            break;
-        case PacketType::GPS:
-            handle_gnss(parsed_values);
-            break;
-        case PacketType::INS:
-            //handle_filter(packet);
-            break;
-        case PacketType::UNKNOWN:
-            break;
+    switch (packet.msg_type) {
+    case PacketType::IMU:
+        handle_imu(parsed_values);
+        break;
+    case PacketType::GPS:
+        handle_gnss(parsed_values);
+        break;
+    case PacketType::INS:
+        handle_filter(parsed_values);
+        break;
+    case PacketType::UNKNOWN:
+        break;
     }
 }
 
@@ -284,13 +308,6 @@ void loop(void) {
         return;
     }
 
-    if (b == PKT_IDENTIFIER) {
-        message_in.state = ParseState::WaitingFor_PktIdentifier;
-        message_in.payload.clear();
-        message_in.checksum.clear();
-    }
-
-
     // Simple state machine for packet collection and parsing.
     switch (message_in.state) {
         case ParseState::WaitingFor_PktIdentifier:
@@ -298,34 +315,42 @@ void loop(void) {
                 // Start looking for what type of message we can expect
                 message_in.state = ParseState::WaitingFor_MsgDescriptor;
                 // Clear the container for the data of the message.
-                message_in.payload.clear();
-                message_in.checksum.clear();
+                message_in.payload[0] = 0;
+                message_in.checksum[0] = 0;
+                message_in.running_checksum = 0;
+                message_in.header_type[0] = 0;
+                pkt_counter = 0;
             }
             break;
 
         case ParseState::WaitingFor_MsgDescriptor:
             // If we get a comma, then we are done receiving the message descriptor
             if (b == COMMA_DELIMITER) {
-                if(!classify_msg(message_in)) {
+                if(!classify_packet(message_in)) {
                     // not a valid message, go back to waiting for identifier
                     message_in.state = ParseState::WaitingFor_PktIdentifier;
-                    write_uart(hal.serial(0), "SERIAL0", " Not sure what it is\n");
                 } else {
                     // Continue recording data now that we know it is one of the expected messages
                     message_in.state = ParseState::WaitingFor_Data;
+                    pkt_counter = 0;
                 }
             }
             // Record data. The checksum runs over the message descriptor section also.
-            message_in.payload.push_back(b);
+            message_in.running_checksum ^= b;
+            message_in.header_type[pkt_counter++] = b;
             break;
 
         case ParseState::WaitingFor_Data:
             // If we have not receive the ASCII character representing the end of data,
             // continue recording data.
             if (b != END_DATA) {
-                message_in.payload.push_back(b);
+                message_in.payload[pkt_counter++] = b;
+                message_in.running_checksum ^= b;
+                message_in.length = pkt_counter;
             } else {
+                // If we got the "*"", record the checksum to check for data integrity.
                 message_in.state = ParseState::WaitingFor_Checksum;
+                pkt_counter = 0;
             }
             break;
 
@@ -333,20 +358,19 @@ void loop(void) {
             // We are still waiting for checksum data if we have not seen the "CR" character.
             // Therefore still record data.
             if (b!= END_CHECKSUM) {
-                message_in.checksum.push_back(b);
+                message_in.checksum[pkt_counter++] = b;
             } else {
-                // If we got the "CRgyro", check the checksums.
-                if(validate_msg(message_in)) {
-                    write_uart(hal.serial(0), "SERIAL0", "Valid msg\n");
-                    handle_msg(message_in);
-                } else {
-                    write_uart(hal.serial(0), "SERIAL0", "Invalid msg\n");
-                };
+                //If we got the "CR", check the checksums.
+                if(valid_packet(message_in)) {
+                    handle_packet(message_in);
+                }
+
                 // Now that we got the end of the packet, and have handled the message if it needs handling,
                 // go back to waiting for data.
                 message_in.state = ParseState::WaitingFor_PktIdentifier;
-                message_in.payload.clear();
-                message_in.checksum.clear();
+                message_in.payload[0] = 0;
+                message_in.checksum[0] = 0;
+                message_in.running_checksum = 0;
             }
             break;
     }

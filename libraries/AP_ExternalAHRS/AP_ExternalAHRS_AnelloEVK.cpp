@@ -87,7 +87,7 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                     message_in.checksum[0] = 0;
                     message_in.running_checksum = 0;
                     message_in.header_type[0] = 0;
-                    i = 0;
+                    pkt_counter = 0;
                 }
                 break;
 
@@ -100,25 +100,27 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                     } else {
                         // Continue recording data now that we know it is one of the expected messages
                         message_in.state = ParseState::WaitingFor_Data;
-                        i = 0;
                     }
+                    pkt_counter = 0;
+                    message_in.running_checksum ^= b;
+                    break;
                 }
                 // Record data. The checksum runs over the message descriptor section also.
                 message_in.running_checksum ^= b;
-                message_in.header_type[i++] = b;
+                message_in.header_type[pkt_counter++] = b;
                 break;
 
             case ParseState::WaitingFor_Data:
                 // If we have not receive the ASCII character representing the end of data,
                 // continue recording data.
                 if (b != END_DATA) {
-                    message_in.payload[i++] = b;
+                    message_in.payload[pkt_counter++] = b;
                     message_in.running_checksum ^= b;
-                    message_in.length = i;
+                    message_in.length = pkt_counter;
                 } else {
                     // If we got the "*"", record the checksum to check for data integrity.
                     message_in.state = ParseState::WaitingFor_Checksum;
-                    i = 0;
+                    pkt_counter = 0;
                 }
                 break;
 
@@ -126,7 +128,7 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                 // We are still waiting for checksum data if we have not seen the "CR" character.
                 // Therefore still record data.
                 if (b!= END_CHECKSUM) {
-                    message_in.checksum[i++] = b;
+                    message_in.checksum[pkt_counter++] = b;
                 } else {
                     //If we got the "CR", check the checksums.
                     if(valid_packet(message_in)) {
@@ -165,12 +167,11 @@ bool AP_ExternalAHRS_AnelloEVK::classify_packet(Msg &msg) {
 // returns true if the XOR checksum for the packet is valid, else false.
 bool AP_ExternalAHRS_AnelloEVK::valid_packet(Msg &msg)
 {
-    uint8_t checksum = 16 * char_to_hex(msg.checksum[0]) + char_to_hex(msg.checksum[1]);
+    uint16_t checksum = 16 * char_to_hex(msg.checksum[0]) + char_to_hex(msg.checksum[1]);
 
     // Calculate the expected CRC
     // Simple XOR, see:
     // https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
-
     return checksum == msg.running_checksum;
 }
 
@@ -199,11 +200,12 @@ void AP_ExternalAHRS_AnelloEVK::handle_packet(Msg &packet) {
 std::vector<double> AP_ExternalAHRS_AnelloEVK::parse_packet(char payload[]) {
 
     std::vector<double> result;
+
     char *saveptr = nullptr;
     for (char *pname = strtok_r(payload, ",", &saveptr);
-         pname != nullptr;
-         pname = strtok_r(nullptr, ",", &saveptr)) {
-        result[i++] = atof(pname);
+        pname != nullptr;
+        pname = strtok_r(nullptr, ",", &saveptr)) {
+        result[0] = atof(pname);
     }
     return result;
 }

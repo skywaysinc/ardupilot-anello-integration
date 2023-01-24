@@ -25,7 +25,6 @@
 #if HAL_EXTERNAL_AHRS_ANELLO_EVK_ENABLED
 
 #include <GCS_MAVLink/GCS_MAVLink.h>
-#include <vector>
 
 class AP_ExternalAHRS_AnelloEVK: public AP_ExternalAHRS_backend
 {
@@ -51,7 +50,7 @@ public:
 private:
     // Useful ASCII encoded characters
     const char COMMA_DELIMITER = ',';
-    const char END_CHECKSUM = 0x0D; // "CR"
+    const char END_CHECKSUM = '\r';// "CR"
     const char END_DATA = '*';
     const char PKT_IDENTIFIER = '#';
 
@@ -70,6 +69,7 @@ private:
     uint32_t last_filter_pkt;
     uint32_t last_gps_pkt;
     uint32_t last_ins_pkt;
+    uint pkt_counter = 0;
 
     enum class ParseState {
         WaitingFor_PktIdentifier,
@@ -115,7 +115,6 @@ private:
         char checksum[2];
         uint8_t running_checksum;
         uint8_t length;
-
     } message_in;
 
     struct {
