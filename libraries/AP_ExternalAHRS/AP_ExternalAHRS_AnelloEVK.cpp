@@ -251,7 +251,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<double> &payload) {
                        "soooEEEEO", "C00000000",
                        "Qffffffff",
                        AP_HAL::micros64(),
-                       payload[2]*GRAVITY_MSS,payload[3]*GRAVITY_MSS,payload[4]*GRAVITY_MSS,
+                       payload[2]*GRAVITY_MSS, payload[3]*GRAVITY_MSS, payload[4]*GRAVITY_MSS,
                        payload[5]*DEG_TO_RAD, payload[6]*DEG_TO_RAD, payload[7]*DEG_TO_RAD, payload[8]*DEG_TO_RAD,
                        payload[11]);
 }
@@ -296,7 +296,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<double> &payload)
 
     AP::logger().WriteStreaming("EAH2", "TimeUS,TOW,WEK,LAT,LONG,MSL,SPD,HDG,FIX,SNUM,RTK",
                         "ss-DDmsn---", "CC000000000",
-                        "Qfffffffff",
+                        "Qffffffffff",
                         AP_HAL::micros64(),
                         gnss_data.tow_ms,gnss_data.week,
                         payload[3],payload[4],payload[6],
