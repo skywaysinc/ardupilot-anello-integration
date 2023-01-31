@@ -205,7 +205,7 @@ std::vector<double> AP_ExternalAHRS_AnelloEVK::parse_packet(char payload[]) {
     for (char *pname = strtok_r(payload, ",", &saveptr);
         pname != nullptr;
         pname = strtok_r(nullptr, ",", &saveptr)) {
-        result[0] = atof(pname);
+        result.push_back(atof(pname));
     }
     return result;
 }
