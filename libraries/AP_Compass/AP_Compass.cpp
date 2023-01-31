@@ -59,6 +59,10 @@ extern const AP_HAL::HAL& hal;
 #define HAL_COMPASS_AUTO_ROT_DEFAULT 2
 #endif
 
+#ifndef AP_COMPASS_EXTERNALAHRS_ENABLED
+#define AP_COMPASS_EXTERNALAHRS_ENABLED 0
+#endif
+
 const AP_Param::GroupInfo Compass::var_info[] = {
     // index 0 was used for the old orientation matrix
 

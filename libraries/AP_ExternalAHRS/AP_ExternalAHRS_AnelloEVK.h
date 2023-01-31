@@ -40,8 +40,6 @@ public:
     bool healthy(void) const override;
     bool initialised(void) const override;
     bool pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const override;
-    void get_filter_status(nav_filter_status &status) const override;
-    void send_status_report(mavlink_channel_t chan) const override;
 
     // check for new data
     void update() override {
@@ -125,12 +123,6 @@ private:
         float horizontal_position_accuracy;
         float vertical_position_accuracy;
     } gnss_data;
-
-    struct {
-        uint16_t state;
-        uint16_t mode;
-        uint16_t flags;
-    } filter_status;
 
     struct {
         uint16_t week;

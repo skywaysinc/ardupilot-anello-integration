@@ -74,6 +74,10 @@
 #define HAL_BARO_ALLOW_INIT_NO_BARO
 #endif
 
+#ifndef AP_BARO_EXTERNALAHRS_ENABLED
+#define AP_BARO_EXTERNALAHRS_ENABLED 0
+#endif
+
 extern const AP_HAL::HAL& hal;
 
 // table of user settable parameters

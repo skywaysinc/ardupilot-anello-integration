@@ -59,7 +59,7 @@ void AP_ExternalAHRS_AnelloEVK::update_thread(void)
 
     while (true) {
         build_packet();
-        hal.scheduler->delay_microseconds(100);
+        hal.scheduler->delay_microseconds(5);
     }
 }
 
@@ -247,9 +247,9 @@ void AP_ExternalAHRS_AnelloEVK::handle_imu(std::vector<double> &payload) {
     // @Field: WZ: z angular velocity
     // @Field: OG_WZ: z angular velocity measured by FOG
     // @Field: TempC: Temperature
-    AP::logger().WriteStreaming("EAH1", "TimeUS,AX,AY,AZ,WX,WY,WZ,OG_WZ,TempC",
+    AP::logger().WriteStreaming("EAH1", "TimeUS,AX,AY,AZ,WX,WY,WZ,OG_WZ,T",
                        "soooEEEEO", "C00000000",
-                       "Qffffffff",
+                       "Qdddddddd",
                        AP_HAL::micros64(),
                        payload[2]*GRAVITY_MSS, payload[3]*GRAVITY_MSS, payload[4]*GRAVITY_MSS,
                        payload[5]*DEG_TO_RAD, payload[6]*DEG_TO_RAD, payload[7]*DEG_TO_RAD, payload[8]*DEG_TO_RAD,
@@ -263,10 +263,10 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<double> &payload)
     last_gps_pkt = AP_HAL::millis();
 
 
-    gnss_data.week = static_cast<uint16_t>(payload[2] / (AP_MSEC_PER_WEEK * 1000000));
-    gnss_data.tow_ms = static_cast<uint32_t>(payload[2] / 1000000 - gnss_data.week * AP_MSEC_PER_WEEK);
+    gnss_data.week = static_cast<uint16_t>(payload[2] / (AP_MSEC_PER_WEEK * 1e6));
+    gnss_data.tow_ms = static_cast<uint32_t>(payload[2] / 1e6 - gnss_data.week * AP_MSEC_PER_WEEK);
 
-    gnss_data.num_sats = static_cast<uint8_t>(payload[12]);
+    gnss_data.num_sats = static_cast<uint8_t>(payload[13]);
     gnss_data.speed_accuracy = static_cast<float>(payload[14]);
     gnss_data.horizontal_position_accuracy = static_cast<float>(payload[9]);
     gnss_data.vertical_position_accuracy = static_cast<float>(payload[10]);
@@ -283,25 +283,24 @@ void AP_ExternalAHRS_AnelloEVK::handle_gnss(std::vector<double> &payload)
     // @LoggerMessage: EAH2
     // @Description: External AHRS gps data
     // @Field: TimeUS: Time since system startup
-    // @Field: TOW: GPS Time of week in ms
-    // @Field: WEK: GPS Week
-    // @Field: LAT: Latitude in deg
-    // @Field: LNG: Longitude in deg
+    // @Field: GMS: GPS Time of week in ms
+    // @Field: GWk: GPS Week
+    // @Field: Lat: Latitude in deg
+    // @Field: Lng: Longitude in deg
     // @Field: MSL: Height above mean sea level m
-    // @Field: SPD: GPS speed in m/s
-    // @Field: HDG: GNSS Heading
-    // @Field: FIX: Fix type -> 0: No Fix, 2: 2D Fix, 3: 3D Fix, 5: Time Only
-    // @Field: SNUM: No of satellites
+    // @Field: Spd: GPS speed in m/s
+    // @Field: Hdg: GNSS Heading
+    // @Field: Status: Fix type -> 0: No Fix, 2: 2D Fix, 3: 3D Fix, 5: Time Only
+    // @Field: NSats: No of satellites
     // @Field: RTK: RTK status
 
-    AP::logger().WriteStreaming("EAH2", "TimeUS,TOW,WEK,LAT,LONG,MSL,SPD,HDG,FIX,SNUM,RTK",
-                        "ss-DDmsn---", "CC000000000",
-                        "Qffffffffff",
+    AP::logger().WriteStreaming("EAH2", "TimeUS,GMS,GWk,Lat,Lng,MSL,Spd,Hdg,Status,NSats,RTK",
+                        "ss-DUmnh---", "CC000000000",
+                        "QiHdddddddd",
                         AP_HAL::micros64(),
                         gnss_data.tow_ms,gnss_data.week,
-                        payload[3],payload[4],payload[6],
-                        payload[7], payload[8],payload[12],payload[13],
-                        payload[16]);
+                        payload[3],payload[4],payload[6],payload[7], payload[8],
+                        payload[12],payload[13],payload[16]);
 
 }
 
@@ -330,16 +329,13 @@ void AP_ExternalAHRS_AnelloEVK::handle_filter(std::vector<double> &payload)
     filter_data.week = static_cast<uint16_t>(payload[2] / (AP_MSEC_PER_WEEK * 1000000));
     filter_data.tow_ms = static_cast<uint32_t>(payload[2] / 1000000 - filter_data.week * AP_MSEC_PER_WEEK);
 
-    filter_data.lat = static_cast<int32_t>(payload[4]);
-    filter_data.lon = static_cast<int32_t>(payload[5]);
+    filter_data.lat = static_cast<int32_t>(payload[4]*1.0e7);
+    filter_data.lon = static_cast<int32_t>(payload[5]*1.0e7);
     filter_data.hae_altitude = static_cast<int32_t>(payload[6]);
 
     filter_data.ned_velocity_north = static_cast<float>(payload[7]);
     filter_data.ned_velocity_east = static_cast<float>(payload[8]);
     filter_data.ned_velocity_down = static_cast<float>(payload[9]);
-
-    filter_status.state = static_cast<uint16_t>(payload[3]);
-    filter_status.mode = static_cast<uint16_t>(payload[13]);
 
     // @LoggerMessage: EAH3
     // @Description: External AHRS Filter data
@@ -347,22 +343,22 @@ void AP_ExternalAHRS_AnelloEVK::handle_filter(std::vector<double> &payload)
     // @Field: GT: GPS Time in ns
     // @Field: Stat: Status
     // @Field: Lat: Latitude in deg
-    // @Field: Long: Longitude in deg
-    // @Field: HGT: Height above ellipsoid
+    // @Field: Lng: Longitude in deg
+    // @Field: Alt: Height above ellipsoid
     // @Field: VN: x velocity
     // @Field: VE: y velocity
-    // @Field: VD: z velocity
-    // @Field: RLL: Roll Angle, rotation about body frame X
-    // @Field: PIT: Pitch Angle, rotation about body frame Y
-    // @Field: HDG: Heading Angle, rotation about body frame Z
+    // @Field: VZ: z velocity
+    // @Field: Rll: Roll Angle, rotation about body frame X
+    // @Field: Pit: Pitch Angle, rotation about body frame Y
+    // @Field: Yaw: Heading Angle, rotation about body frame Z
     // @Field: ZUPT: 0: Moving, 1: Stationary
-    AP::logger().WriteStreaming("EAH3", "TimeUS,GT,Stat,LAT,LONG,HGT,VN,VE,VD,RLL,PIT,HDG,ZUPT",
-                       "ss-DDmnnnddd-", "CC00000000000",
-                       "QQfffffffffff",
-                       AP_HAL::micros64(),
-                       payload[3],payload[4],payload[5],payload[6],
-                       payload[7],payload[8],payload[9],
-                       payload[10],payload[11],payload[12],
+    AP::logger().WriteStreaming("EAH3", "TimeUS,GT,Stat,Lat,Lng,Alt,VN,VE,Vz,Rll,Pit,Yaw,ZUPT",
+                       "ss-DUmnnnddd-", "CC00000000000",
+                       "Qdddddddddddd",
+                       AP_HAL::micros64(), payload[2], payload[3],
+                       payload[4],payload[5], payload[6],
+                       payload[7],payload[8], payload[9],
+                       payload[10],payload[11], payload[12],
                        payload[13]);
 
 }
@@ -442,85 +438,8 @@ bool AP_ExternalAHRS_AnelloEVK::pre_arm_check(char *failure_msg, uint8_t failure
         hal.util->snprintf(failure_msg, failure_msg_len, "AnelloEVK no GPS lock");
         return false;
     }
-    if (filter_status.state > 0x02) {
-        hal.util->snprintf(failure_msg, failure_msg_len, "AnelloEVK filter not running");
-        return false;
-    }
 
     return true;
-}
-
-void AP_ExternalAHRS_AnelloEVK::get_filter_status(nav_filter_status &status) const
-{
-    memset(&status, 0, sizeof(status));
-    if (last_ins_pkt != 0 && last_gps_pkt != 0) {
-        status.flags.initalized = 1;
-    }
-    if (healthy() && last_ins_pkt != 0) {
-        status.flags.attitude = 1;
-        status.flags.vert_vel = 1;
-        status.flags.vert_pos = 1;
-
-        if (filter_data.fix_type >= 3) {
-            status.flags.horiz_vel = 1;
-            status.flags.horiz_pos_rel = 1;
-            status.flags.horiz_pos_abs = 1;
-            status.flags.pred_horiz_pos_rel = 1;
-            status.flags.pred_horiz_pos_abs = 1;
-            status.flags.using_gps = 1;
-        }
-    }
-}
-
-void AP_ExternalAHRS_AnelloEVK::send_status_report(mavlink_channel_t chan) const
-{
-    // prepare flags
-    uint16_t flags = 0;
-    nav_filter_status filterStatus;
-    get_filter_status(filterStatus);
-    if (filterStatus.flags.attitude) {
-        flags |= EKF_ATTITUDE;
-    }
-    if (filterStatus.flags.horiz_vel) {
-        flags |= EKF_VELOCITY_HORIZ;
-    }
-    if (filterStatus.flags.vert_vel) {
-        flags |= EKF_VELOCITY_VERT;
-    }
-    if (filterStatus.flags.horiz_pos_rel) {
-        flags |= EKF_POS_HORIZ_REL;
-    }
-    if (filterStatus.flags.horiz_pos_abs) {
-        flags |= EKF_POS_HORIZ_ABS;
-    }
-    if (filterStatus.flags.vert_pos) {
-        flags |= EKF_POS_VERT_ABS;
-    }
-    if (filterStatus.flags.terrain_alt) {
-        flags |= EKF_POS_VERT_AGL;
-    }
-    if (filterStatus.flags.const_pos_mode) {
-        flags |= EKF_CONST_POS_MODE;
-    }
-    if (filterStatus.flags.pred_horiz_pos_rel) {
-        flags |= EKF_PRED_POS_HORIZ_REL;
-    }
-    if (filterStatus.flags.pred_horiz_pos_abs) {
-        flags |= EKF_PRED_POS_HORIZ_ABS;
-    }
-    if (!filterStatus.flags.initalized) {
-        flags |= EKF_UNINITIALIZED;
-    }
-
-    // send message
-    const float vel_gate = 4; // represents hz value data is posted at
-    const float pos_gate = 4; // represents hz value data is posted at
-    const float hgt_gate = 4; // represents hz value data is posted at
-    const float mag_var = 0; //we may need to change this to be like the other gates, set to 0 because mag is ignored by the ins filter in anello
-    mavlink_msg_ekf_status_report_send(chan, flags,
-                                       gnss_data.speed_accuracy/vel_gate, gnss_data.horizontal_position_accuracy/pos_gate, gnss_data.vertical_position_accuracy/hgt_gate,
-                                       mag_var, 0, 0);
-
 }
 
 #endif // HAL_EXTERNAL_AHRS_ENABLED

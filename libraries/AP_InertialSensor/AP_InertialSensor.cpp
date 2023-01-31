@@ -47,6 +47,11 @@
 #define HAL_DEFAULT_INS_FAST_SAMPLE 1
 #endif
 
+#ifndef AP_IMU_EXTERNALAHRS_ENABLED
+#define AP_IMU_EXTERNALAHRS_ENABLED 1
+#endif
+
+
 extern const AP_HAL::HAL& hal;
 
 
