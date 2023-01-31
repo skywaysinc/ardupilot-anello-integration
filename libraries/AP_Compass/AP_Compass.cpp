@@ -59,6 +59,10 @@ extern const AP_HAL::HAL& hal;
 #define HAL_COMPASS_AUTO_ROT_DEFAULT 2
 #endif
 
+#ifndef AP_COMPASS_EXTERNALAHRS_ENABLED
+#define AP_COMPASS_EXTERNALAHRS_ENABLED 0
+#endif
+
 const AP_Param::GroupInfo Compass::var_info[] = {
     // index 0 was used for the old orientation matrix
 
@@ -1217,8 +1221,8 @@ void Compass::_probe_external_i2c_compasses(void)
  */
 void Compass::_detect_backends(void)
 {
-#if HAL_EXTERNAL_AHRS_ENABLED
-    const int8_t serial_port = AP::externalAHRS().get_port();
+#if AP_COMPASS_EXTERNALAHRS_ENABLED
+    const int8_t serial_port = AP::externalAHRS().get_port(AP_ExternalAHRS::AvailableSensor::COMPASS);
     if (serial_port >= 0) {
         ADD_BACKEND(DRIVER_SERIAL, new AP_Compass_ExternalAHRS(serial_port));
     }

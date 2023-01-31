@@ -85,7 +85,7 @@ void AP_GPS_ExternalAHRS::handle_external(const AP_ExternalAHRS::gps_data_messag
 bool AP_GPS_ExternalAHRS::get_lag(float &lag_sec) const
 {
     // fixed assumed lag
-    lag_sec = 0.11;
+    lag_sec = 0.66;
     return true;
 }
 
