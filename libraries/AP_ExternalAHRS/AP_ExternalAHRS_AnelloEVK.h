@@ -109,7 +109,7 @@ private:
         PacketType msg_type;
         ParseState state;
         char header_type[5];
-        char payload[100];
+        char payload[200];
         char checksum[2];
         uint8_t running_checksum;
         uint8_t length;
@@ -141,7 +141,7 @@ private:
 
     bool classify_packet(Msg &msg);
     bool valid_packet(Msg &msg);
-    std::vector<double> parse_packet(char payload[]);
+    std::vector<double> parse_packet(char *payload);
     void build_packet();
     void handle_filter(std::vector<double> &payload);
     void handle_gnss(std::vector<double> &payload);

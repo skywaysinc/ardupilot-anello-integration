@@ -84,10 +84,10 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                     // Start looking for what type of message we can expect
                     message_in.state = ParseState::WaitingFor_MsgDescriptor;
                     // Clear the container for the data of the message.
-                    message_in.payload[0] = 0;
-                    message_in.checksum[0] = 0;
+                    memset(&message_in.payload, 0, sizeof(message_in.payload));
+                    memset(&message_in.checksum, 0, sizeof(message_in.checksum));
                     message_in.running_checksum = 0;
-                    message_in.header_type[0] = 0;
+                    memset(message_in.header_type, 0, sizeof(message_in.header_type));
                     pkt_counter = 0;
                 }
                 break;
@@ -139,9 +139,6 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
                     // Now that we got the end of the packet, and have handled the message if it needs handling,
                     // go back to waiting for data.
                     message_in.state = ParseState::WaitingFor_PktIdentifier;
-                    message_in.payload[0] = 0;
-                    message_in.checksum[0] = 0;
-                    message_in.running_checksum = 0;
                 }
                 break;
         }
@@ -152,11 +149,11 @@ void AP_ExternalAHRS_AnelloEVK::build_packet()
 bool AP_ExternalAHRS_AnelloEVK::classify_packet(Msg &msg) {
 
     // Try to classify by comparing received header to declared expected headers
-    if (strcmp(msg.header_type,IMU_HEADER)) {
+    if (strncmp(msg.header_type,IMU_HEADER,5) == 0) {
         msg.msg_type = PacketType::IMU;
-    } else if (strcmp(msg.header_type,GPS_HEADER) || strcmp(msg.header_type,GP2_HEADER)) {
+    } else if (strncmp(msg.header_type,GPS_HEADER,5) == 0 || strncmp(msg.header_type,GP2_HEADER,5) == 0) {
         msg.msg_type = PacketType::GPS;
-    } else if (strcmp(msg.header_type,INS_HEADER)) {
+    } else if (strncmp(msg.header_type,INS_HEADER,5) == 0) {
         msg.msg_type = PacketType::INS;
     } else {
         // If not matches declare unknown and return false.
@@ -199,7 +196,7 @@ void AP_ExternalAHRS_AnelloEVK::handle_packet(Msg &packet) {
 }
 
 // Parses the csv payload to a vector of floats.
-std::vector<double> AP_ExternalAHRS_AnelloEVK::parse_packet(char payload[]) {
+std::vector<double> AP_ExternalAHRS_AnelloEVK::parse_packet(char *payload) {
 
     std::vector<double> result;
 
