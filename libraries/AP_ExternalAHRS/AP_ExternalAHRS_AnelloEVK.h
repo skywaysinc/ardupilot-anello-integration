@@ -25,7 +25,6 @@
 #if HAL_EXTERNAL_AHRS_ANELLO_EVK_ENABLED
 
 #include <GCS_MAVLink/GCS_MAVLink.h>
-#include <vector>
 
 class AP_ExternalAHRS_AnelloEVK: public AP_ExternalAHRS_backend
 {
@@ -42,32 +41,34 @@ public:
     bool pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const override;
 
     // check for new data
-    void update() override {
+    void update() override
+    {
         build_packet();
     };
 
 private:
     // Useful ASCII encoded characters
-    const uint8_t COMMA_DELIMITER = 0x2C; // ","
-    const uint8_t END_CHECKSUM = 0x0D; // "CR"
-    const uint8_t END_DATA = 0x2A; // "*"
-    const uint8_t PKT_IDENTIFIER = 0x23; // "#"
+    const char _comma_delimiter = ',';
+    const char _end_checksum_delimiter = '\r'; // "CR"
+    const char _end_data_delimiter = '*';
+    const char _pkt_identifier = '#';
 
     // ASCII Encoded Message Descriptors
     // see Anello ref: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
-    const std::vector<uint8_t> GPS_HEADER {0x41, 0x50, 0x47, 0x50, 0x53}; // "APGPS"
-    const std::vector<uint8_t> GP2_HEADER {0x41, 0x50, 0x47, 0x50, 0x32}; // "APGP2"
-    const std::vector<uint8_t> IMU_HEADER {0x41, 0x50, 0x49, 0x4D, 0x55}; // "APIMU"
-    const std::vector<uint8_t> INS_HEADER {0x41, 0x50, 0x49, 0x4E, 0x53}; // "APINS"
+    const char* _gps_header = "APGPS";
+    const char* _gp2_header = "APGP2";
+    const char* _imu_header = "APIMU";
+    const char* _ins_header = "APINS";
 
-    AP_HAL::UARTDriver *uart;
-    bool port_open = false;
-    HAL_Semaphore sem;
-    int8_t port_num;
-    uint32_t baudrate;
-    uint32_t last_filter_pkt;
-    uint32_t last_gps_pkt;
-    uint32_t last_ins_pkt;
+    AP_HAL::UARTDriver *_uart;
+    bool _port_open = false;
+    HAL_Semaphore _sem;
+    int8_t _port_num;
+    uint32_t _baudrate;
+    uint32_t _last_filter_pkt;
+    uint32_t _last_gps_pkt;
+    uint32_t _last_ins_pkt;
+    uint _pkt_counter = 0;
 
     enum class ParseState {
         WaitingFor_PktIdentifier,
@@ -108,8 +109,11 @@ private:
     struct Msg {
         PacketType msg_type;
         ParseState state;
-        std::vector<uint8_t> payload;
-        std::vector<uint8_t> checksum;
+        char header_type[5];
+        char payload[200];
+        char checksum[2];
+        uint8_t running_checksum;
+        uint8_t length;
     } message_in;
 
     struct {
@@ -138,7 +142,7 @@ private:
 
     bool classify_packet(Msg &msg);
     bool valid_packet(Msg &msg);
-    std::vector<double> parse_packet(std::vector<uint8_t> &payload);
+    std::vector<double> parse_packet(char *payload);
     void build_packet();
     void handle_filter(std::vector<double> &payload);
     void handle_gnss(std::vector<double> &payload);
@@ -147,7 +151,6 @@ private:
     void post_filter();
     void post_imu();
     void update_thread();
-
 };
 
 #endif // HAL_EXTERNAL_AHRS_ENABLED
