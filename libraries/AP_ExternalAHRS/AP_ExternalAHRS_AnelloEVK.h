@@ -41,33 +41,34 @@ public:
     bool pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const override;
 
     // check for new data
-    void update() override {
+    void update() override
+    {
         build_packet();
     };
 
 private:
     // Useful ASCII encoded characters
-    const char COMMA_DELIMITER = ',';
-    const char END_CHECKSUM = '\r';// "CR"
-    const char END_DATA = '*';
-    const char PKT_IDENTIFIER = '#';
+    const char _comma_delimiter = ',';
+    const char _end_checksum_delimiter = '\r'; // "CR"
+    const char _end_data_delimiter = '*';
+    const char _pkt_identifier = '#';
 
     // ASCII Encoded Message Descriptors
     // see Anello ref: https://docs-a1.readthedocs.io/en/latest/communication_messaging.html#ascii-data-output-messages
-    const char* GPS_HEADER = "APGPS";
-    const char* GP2_HEADER = "APGP2";
-    const char* IMU_HEADER = "APIMU";
-    const char* INS_HEADER = "APINS";
+    const char* _gps_header = "APGPS";
+    const char* _gp2_header = "APGP2";
+    const char* _imu_header = "APIMU";
+    const char* _ins_header = "APINS";
 
-    AP_HAL::UARTDriver *uart;
-    bool port_open = false;
-    HAL_Semaphore sem;
-    int8_t port_num;
-    uint32_t baudrate;
-    uint32_t last_filter_pkt;
-    uint32_t last_gps_pkt;
-    uint32_t last_ins_pkt;
-    uint pkt_counter = 0;
+    AP_HAL::UARTDriver *_uart;
+    bool _port_open = false;
+    HAL_Semaphore _sem;
+    int8_t _port_num;
+    uint32_t _baudrate;
+    uint32_t _last_filter_pkt;
+    uint32_t _last_gps_pkt;
+    uint32_t _last_ins_pkt;
+    uint _pkt_counter = 0;
 
     enum class ParseState {
         WaitingFor_PktIdentifier,
@@ -150,9 +151,6 @@ private:
     void post_filter();
     void post_imu();
     void update_thread();
-    int i = 0;
-
-
 };
 
 #endif // HAL_EXTERNAL_AHRS_ENABLED
